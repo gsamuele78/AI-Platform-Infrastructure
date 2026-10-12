@@ -20,7 +20,7 @@ setup() {
   [[ -s "${OUT}/openwebui_data.tgz" ]]
   [[ -s "${OUT}/tls.tgz" ]]
   tar -tzf "${OUT}/tls.tgz" | grep -q 'ca/ca.key'
-  ! tar -tzf "${OUT}/tls.tgz" | grep -q acme-webroot
+  [[ "$(tar -tzf "${OUT}/tls.tgz")" != *acme-webroot* ]]
   (cd "${OUT}" && sha256sum -c SHA256SUMS)
   called docker "exec .*pg_restore --list"
   [[ "$(stat -c %a "${OUT}")" == 700 ]]
@@ -59,14 +59,14 @@ setup() {
   echo tampered >>"${OUT}/litellm.pgdump"
   run bash "${RESTORE}" --from "${OUT}" --yes
   assert_failure
-  ! called docker "exec .*dropdb"
+  refute called docker "exec .*dropdb"
 }
 
 @test "restore asks for confirmation and aborts on anything but 'yes'" {
   bash "${BACKUP}" --out "${OUT}"
   run bash -c "echo no | bash '${RESTORE}' --from '${OUT}'"
   assert_failure
-  ! called docker "exec .*dropdb"
+  refute called docker "exec .*dropdb"
 }
 
 @test "restore stops writers, recreates the DB, restores data in that order" {

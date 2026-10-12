@@ -8,7 +8,7 @@
 - The previous design had no deploy or rollback tooling for the stack, and the ADRs claimed backups that did not exist.
 
 ## Decision
-1. **Immutable releases.** `deploy.sh` copies `compose.yaml`, `release.env` and `configs/` into `/var/lib/lifewatch/releases/<UTC-timestamp>-<git-sha>`. Secrets stay in `.env` (mode 600) and are never copied. `releases/current` is an atomically swapped symlink.
+1. **Immutable releases.** `deploy.sh` copies `compose.yaml`, the GPU profile (as `release.env`; ADR-012) and `configs/` into `/var/lib/lifewatch/releases/<UTC-timestamp>-<git-sha>`. Secrets stay in `.env` (mode 600) and are never copied. `releases/current` is an atomically swapped symlink.
 2. **Reviewed state only.** Deploy refuses uncommitted changes. Images are pinned by digest and the model by commit revision, so a release is reproducible.
 3. **Preflight before change:** secrets present, strong, URL-safe and not placeholders; Compose renders; weights staged; 2 GPUs visible.
 4. **Back up before change:** a verified `pg_dump` plus an archive of the Open WebUI volume (UI stopped), with checksums, before the image pull.

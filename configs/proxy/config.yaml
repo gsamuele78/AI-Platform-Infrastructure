@@ -1,13 +1,19 @@
 # LiteLLM gateway configuration. Models are defined here only (GitOps):
 # STORE_MODEL_IN_DB is False, so the admin UI cannot add untracked models.
 model_list:
-  - model_name: lifewatch-chat # must equal SERVED_MODEL_NAME in release*.env
+  - model_name: lifewatch-chat # must equal SERVED_MODEL_NAME in profiles/*.env
     litellm_params:
       model: openai/lifewatch-chat
       api_base: http://vllm-backend:8000/v1
       api_key: os.environ/VLLM_API_KEY
       timeout: 600
       stream_timeout: 600
+      # Self-hosted, so no real price. A nominal 1e-6 per token makes spend
+      # count tokens: key budgets (issue-key.sh --max-budget) are then in
+      # millions of tokens. Without a price spend stays 0 and budgets never trip
+      # (audit R3-03).
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000001
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

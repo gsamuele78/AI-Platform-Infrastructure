@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stack (guest VM) helpers shared by scripts/deploy and scripts/ops.
 # A *release* is an immutable directory under $LW_STATE_DIR/releases holding
-# the exact compose.yaml, release.env and configs/ that were deployed.
+# the exact compose.yaml, release.env (a copy of the GPU profile, ADR-012) and
+# configs/ that were deployed.
 # Secrets are never copied into releases; they always come from $LW_ENV_FILE.
 
 [[ -n "${_LW_STACK_SH:-}" ]] && return 0
@@ -10,7 +11,6 @@ _LW_STACK_SH=1
 : "${LW_PROJECT:=lifewatch}"
 : "${LW_STATE_DIR:=/var/lib/lifewatch}"
 : "${LW_ENV_FILE:=${LW_REPO_ROOT}/.env}"
-: "${LW_RELEASE_ENV:=${LW_REPO_ROOT}/release.env}"
 : "${LW_GATEWAY_URL:=http://127.0.0.1:4000}"
 : "${LW_WEBUI_HEALTH_URL:=http://127.0.0.1:8080/health}"
 # First start of vLLM loads ~75 GB and captures CUDA graphs: be generous.
@@ -18,6 +18,9 @@ _LW_STACK_SH=1
 # Space-separated extra compose files (relative to the repo) layered on top of
 # compose.yaml, e.g. a site-specific ingress or the CI fake backend.
 : "${LW_COMPOSE_OVERRIDES:=}"
+
+# shellcheck source=scripts/lib/profile.sh
+source "${LW_REPO_ROOT}/scripts/lib/profile.sh"
 
 LW_RELEASES_DIR="${LW_STATE_DIR}/releases"
 # Services whose images own persistent schema (DB migrations, SQLite).
@@ -53,10 +56,11 @@ release_dir() { printf '%s/%s\n' "${LW_RELEASES_DIR}" "$1"; }
 
 # snapshot_release DEST: copy the deployable files of the working tree into DEST.
 snapshot_release() {
-  local dest=$1 f
+  local dest=$1 f profile
+  profile="$(release_env_file)" || return 1
   mkdir -p "${dest}"
   cp "${LW_REPO_ROOT}/compose.yaml" "${dest}/compose.yaml"
-  cp "${LW_RELEASE_ENV}" "${dest}/release.env"
+  cp "${profile}" "${dest}/release.env"
   cp -R "${LW_REPO_ROOT}/configs" "${dest}/configs"
   echo compose.yaml >"${dest}/compose-files"
   for f in ${LW_COMPOSE_OVERRIDES}; do
@@ -64,6 +68,18 @@ snapshot_release() {
     cp -R "${LW_REPO_ROOT}/$(dirname "${f}")/." "${dest}/$(dirname "${f}")/"
     echo "${f}" >>"${dest}/compose-files"
   done
+}
+
+# active_release_env: the profile of the deployed release, or (before the first
+# deploy) the one this machine would deploy.
+active_release_env() {
+  local cur
+  cur="$(current_release_id)"
+  if [[ -n "${cur}" && -f "$(release_dir "${cur}")/release.env" ]]; then
+    printf '%s\n' "$(release_dir "${cur}")/release.env"
+  else
+    release_env_file
+  fi
 }
 
 current_release_id() {

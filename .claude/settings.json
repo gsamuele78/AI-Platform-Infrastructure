@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.bak*)",
+      "Read(./.env.local)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(**/private_key)",
+      "Read(**/.vagrant/**)",
+      "Read(**/live/**)",
+      "Read(**/letsencrypt/**)",
+      "Read(**/lifewatch-backups/**)",
+      "Read(**/*.sql.gz)",
+      "Read(**/*.dump)"
+    ],
+    "ask": [
+      "Bash(*--apply*)",
+      "Bash(make deploy*)",
+      "Bash(sudo make deploy*)",
+      "Bash(make rollback*)",
+      "Bash(sudo make rollback*)",
+      "Bash(*scripts/deploy/deploy.sh*)",
+      "Bash(*scripts/deploy/rollback.sh*)",
+      "Bash(*scripts/ops/restore.sh*)",
+      "Bash(*scripts/ops/tls-letsencrypt.sh*)",
+      "Bash(qm *)",
+      "Bash(pvesh *)",
+      "Bash(*docker compose*down*)",
+      "Bash(*docker volume rm*)",
+      "Bash(git push*)"
+    ]
+  }
+}

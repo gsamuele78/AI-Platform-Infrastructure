@@ -78,3 +78,17 @@ setup() {
   called curl "--cacert ${TLS_DIR}/live/ca.pem"
   called curl "--resolve ai.lifewatch.test:443:127.0.0.1"
 }
+
+@test "fails when vLLM rejects tool_choice=auto (agents could not use tools, R3-02)" {
+  touch "${SANDBOX}/no-tools"
+  run bash "${SCRIPT}"
+  assert_failure
+  assert_output_contains "VLLM_TOOL_CALL_PARSER"
+}
+
+@test "passes the tool-calling check when the backend returns a well-formed call" {
+  run bash "${SCRIPT}"
+  assert_status 0
+  assert_output_contains "1 well-formed call(s)"
+}
+

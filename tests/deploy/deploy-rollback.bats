@@ -47,7 +47,7 @@ mutate_current_gateway_image() {
   called docker "compose .* pull"
   called docker "compose .* up -d --wait"
   [[ "$(current_release)" == "$(basename "${rel}")" ]]
-  ! called docker "exec .*pg_dump" # nothing to back up yet
+  refute called docker "exec .*pg_dump" # nothing to back up yet
 }
 
 @test "subsequent deploy backs up data before touching anything" {
@@ -75,7 +75,7 @@ mutate_current_gateway_image() {
   export LW_PULL_RETRY_DELAY=0
   run bash "${DEPLOY}"
   assert_failure
-  ! called docker "compose .* up"
+  refute called docker "compose .* up"
   [[ "$(current_release)" == "${FIRST}" ]]
   [[ -n "$(find "${LW_STATE_DIR}/releases" -name FAILED)" ]]
 }
@@ -104,7 +104,7 @@ mutate_current_gateway_image() {
   echo 1 >"${SANDBOX}/fail.up"
   run bash "${DEPLOY}" --no-auto-rollback
   assert_failure
-  ! called docker "compose .*releases/${FIRST} .* up"
+  refute called docker "compose .*releases/${FIRST} .* up"
 }
 
 @test "auto-rollback does not restore data when stateful images are unchanged" {
@@ -112,7 +112,7 @@ mutate_current_gateway_image() {
   echo 1 >"${SANDBOX}/fail.up"
   run bash "${DEPLOY}"
   assert_failure
-  ! called docker "exec .*dropdb"
+  refute called docker "exec .*dropdb"
 }
 
 @test "auto-rollback restores the pre-deploy backup when a stateful image changed" {
@@ -142,7 +142,7 @@ mutate_current_gateway_image() {
   run bash "${ROLLBACK}" --previous --yes
   assert_failure
   assert_output_contains "--restore-backup"
-  ! called docker "exec .*dropdb"
+  refute called docker "exec .*dropdb"
 }
 
 @test "manual rollback with --restore-backup restores data before starting old images" {

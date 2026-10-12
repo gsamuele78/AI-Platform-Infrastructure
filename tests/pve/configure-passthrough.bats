@@ -47,7 +47,7 @@ backup_dirs() { find "${LW_PVE_BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d 2>/
   assert_status 0
   assert_output_contains "DRY-RUN"
   assert_output_contains "hostpci0: 0000:41:00,pcie=1"
-  ! called qm "set"
+  refute called qm "set"
   not_called update-initramfs
   cmp "${LW_ETC_MODULES}" "${SANDBOX}/modules.before"
   [[ -z "$(backup_dirs)" ]]
@@ -57,7 +57,7 @@ backup_dirs() { find "${LW_PVE_BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d 2>/
   : >"${SANDBOX}/lspci.out"
   run bash "${SCRIPT}" --vm-id 100 --apply
   assert_failure
-  ! called qm "set"
+  refute called qm "set"
 }
 
 @test "refuses to apply while the VM is running" {
@@ -65,7 +65,7 @@ backup_dirs() { find "${LW_PVE_BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d 2>/
   run bash "${SCRIPT}" --vm-id 100 --apply
   assert_failure
   assert_output_contains "running"
-  ! called qm "set"
+  refute called qm "set"
 }
 
 @test "refuses to apply when the VM machine type is not q35" {
@@ -120,7 +120,7 @@ backup_dirs() { find "${LW_PVE_BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d 2>/
   run bash "${SCRIPT}" --vm-id 100 --apply
   assert_status 0
   assert_output_contains "already configured"
-  ! called qm "set"
+  refute called qm "set"
   not_called update-initramfs
   [[ "$(backup_dirs | wc -l)" -eq 1 ]]
 }
@@ -132,3 +132,54 @@ backup_dirs() { find "${LW_PVE_BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d 2>/
   assert_output_contains "balloon"
   assert_output_contains "cpu"
 }
+
+@test "attaches the single GPU of a one-L40S host" {
+  : >"${SANDBOX}/lspci.out"
+  rm -rf "${LW_SYSFS_ROOT}/bus/pci/devices"/* "${LW_SYSFS_ROOT}/kernel/iommu_groups"/*
+  fake_gpu 0000:41:00.0 30
+  run bash "${SCRIPT}" --vm-id 100 --apply
+  assert_status 0
+  grep -q '^hostpci0: 0000:41:00,pcie=1$' "${QM_DIR}/100.conf"
+  refute grep -q '^hostpci1:' "${QM_DIR}/100.conf"
+}
+
+@test "--gpu attaches only the selected card and leaves the other on the host" {
+  run bash "${SCRIPT}" --vm-id 100 --gpu 0000:c1:00.0 --apply
+  assert_status 0
+  grep -q '^hostpci0: 0000:c1:00,pcie=1$' "${QM_DIR}/100.conf"
+  refute grep -q '0000:41:00' "${QM_DIR}/100.conf"
+  grep -q '^hostpci_keys=hostpci0$' "$(backup_dirs)/manifest"
+}
+
+@test "a second VM can take the other card with --gpu" {
+  fake_vm 101 stopped
+  run bash "${SCRIPT}" --vm-id 100 --gpu 0000:41:00.0 --apply
+  assert_status 0
+  run bash "${SCRIPT}" --vm-id 101 --gpu 0000:c1:00.0 --apply
+  assert_status 0
+  grep -q '^hostpci0: 0000:c1:00,pcie=1$' "${QM_DIR}/101.conf"
+}
+
+@test "refuses a card that another VM already passes through" {
+  fake_vm 101 stopped "hostpci0: 0000:41:00,pcie=1"
+  run bash "${SCRIPT}" --vm-id 100 --apply
+  assert_failure
+  assert_output_contains "already passed through to VM(s) 101"
+  refute called qm "set"
+  [[ -z "$(backup_dirs)" ]]
+}
+
+@test "the owner check also matches short and function-qualified addresses" {
+  fake_vm 101 stopped "hostpci3: host=41:00.0,pcie=1,x-vga=0"
+  run bash "${SCRIPT}" --vm-id 100 --gpu 0000:41:00.0
+  assert_failure
+  assert_output_contains "VM(s) 101"
+}
+
+@test "warns when the VM has too little memory for model loading" {
+  sed -i 's/^memory: .*/memory: 32768/' "${QM_DIR}/100.conf"
+  run bash "${SCRIPT}" --vm-id 100
+  assert_status 0
+  assert_output_contains "65536"
+}
+

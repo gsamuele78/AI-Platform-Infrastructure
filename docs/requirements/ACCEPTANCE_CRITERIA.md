@@ -6,27 +6,31 @@
 
 | ID | Criterion | Verified by |
 | :-- | :-- | :-- |
-| AC-1.1 | Preflight is read-only and fails on: not PVE, IOMMU inactive, GPU count ≠ 2, GPU sharing an IOMMU group with an unrelated device | `scripts/pve/preflight.sh`, `tests/pve/preflight.bats` |
+| AC-1.1 | Preflight is read-only and fails on: not PVE, IOMMU inactive, no L40S, more than 2 selected, a **selected** GPU sharing an IOMMU group with an unrelated device | `scripts/pve/preflight.sh`, `tests/pve/preflight.bats` |
 | AC-1.2 | Passthrough is planned by default and changes nothing without `--apply` | `tests/pve/configure-passthrough.bats` |
-| AC-1.3 | Apply refuses a running or non-q35 VM, backs up and writes a manifest before mutating, never overwrites existing `hostpciN` entries, and a second run is a no-op | same |
+| AC-1.3 | Apply refuses a running or non-q35 VM and a GPU already passed to another VM, attaches only the `--gpu` selection (default: all, max 2), backs up and writes a manifest before mutating, never overwrites existing `hostpciN` entries, and a second run is a no-op | same |
 | AC-1.4 | Rollback restores the exact pre-change state, keeps unrelated VM edits, and refuses on drift | `tests/pve/rollback-passthrough.bats` |
 
 ## 2. Guest VM
 
 | ID | Criterion | Verified by |
 | :-- | :-- | :-- |
-| AC-2.1 | Guest sees exactly 2 GPUs with ≥ 45,000 MiB each, and a CUDA container can use them | `scripts/verify/vm-check.sh` (manual run on the host) |
+| AC-2.1 | Every L40S on the guest's PCI bus (1 or 2) is visible to the driver with ≥ 45,000 MiB, and a CUDA container can use them | `scripts/verify/vm-check.sh` (manual run on the host) |
 | AC-2.2 | Bootstrap uses signed apt repositories only and holds the runtime packages | `tests/vm/vm-scripts.bats` |
 
 ## 3. Serving and gateway
 
 | ID | Criterion | Verified by |
 | :-- | :-- | :-- |
-| AC-3.1 | vLLM starts `Qwen2.5-72B-Instruct` FP8 with TP=2 without CUDA OOM or a KV-capacity error; the `# GPU blocks` log line is recorded in the release record | **Manual**, on the host |
+| AC-3.1 | For **each** profile in use (`l40s-1`, `l40s-2`): vLLM starts the profile's model without CUDA OOM or a KV-capacity error; the `# GPU blocks` log line and the golden-set result are recorded, and only then is `PROFILE_STATUS=validated` committed | **Manual**, on the host |
 | AC-3.2 | An unauthenticated request to `/v1/chat/completions` returns 401; an invalid key returns 401 | `scripts/deploy/smoke-test.sh` (every deploy), `tests/integration/run.sh` |
 | AC-3.3 | A valid key completes inference end to end | `smoke-test.sh` |
 | AC-3.4 | Open WebUI login works through Keycloak; the first admin is created by the operator before the ingress opens | **Manual** (RUNBOOK §3) |
 | AC-3.5 | FP8 KV cache output quality accepted on a representative prompt set | **Manual** (DEC-007) |
+| AC-3.6 | Profile detection maps 1 or 2 L40S to `l40s-1`/`l40s-2`, refuses other hardware, and preflight refuses an unvalidated profile without `LW_ALLOW_UNVALIDATED=true` | `tests/vm/profile.bats` |
+| AC-3.7 | Tool calling with `tool_choice: auto` is accepted and returns well-formed calls; ≥ 64k context in production profiles | `smoke-test.sh`, `tests/compose/policy.bats` |
+| AC-3.8 | Per-key rpm and parallel limits return 429, and spend is counted so budgets trip | `tests/integration/run.sh` |
+| AC-3.9 | Web chat roles come from Keycloak: `ai-user` → user, `ai-admin` → admin, other roles refused | `tests/compose/policy.bats` (config); **Manual** login test (KEYCLOAK_CLIENT §5) |
 
 ## 4. Release management
 

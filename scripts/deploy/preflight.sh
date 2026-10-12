@@ -31,7 +31,7 @@ skipped() { [[ "${SKIP}" == *",$1,"* ]]; }
 if [[ -z "${REL}" ]]; then
   REL="$(mktemp -d)"
   trap 'rm -rf "${REL}"' EXIT
-  snapshot_release "${REL}"
+  snapshot_release "${REL}" || die "Could not select a GPU profile (ADR-012)"
 fi
 
 errors=0
@@ -120,14 +120,30 @@ if ! skipped model; then
   fi
 fi
 
+# ---- Profile (ADR-012) ----------------------------------------------------------
+P() { env_value "${REL}/release.env" "$1"; }
+profile="$(P PROFILE_NAME)"
+case "$(P PROFILE_STATUS)" in
+  validated | lab) pass "Profile ${profile:-?} ($(P PROFILE_STATUS)): $(P MODEL_ID)" ;;
+  *)
+    if [[ "${LW_ALLOW_UNVALIDATED:-false}" == true ]]; then
+      warn "Profile ${profile:-?} is '$(P PROFILE_STATUS)', not validated on this hardware (allowed by LW_ALLOW_UNVALIDATED=true; record AC-3.1)"
+    else
+      bad "Profile ${profile:-?} is '$(P PROFILE_STATUS)', not validated (AC-3.1, PLAN P5). For the validation run itself: LW_ALLOW_UNVALIDATED=true"
+    fi
+    ;;
+esac
+
 # ---- GPUs ---------------------------------------------------------------------
 if ! skipped gpu; then
-  want="$(env_value "${REL}/release.env" VLLM_GPU_COUNT)"
+  want="$(P VLLM_GPU_COUNT)"
   gpus="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -c . || true)"
-  if [[ "${gpus}" -ge "${want:-1}" ]]; then
-    pass "${gpus} GPU(s) visible, release needs ${want}"
+  if [[ "${gpus}" -eq "${want:-1}" ]]; then
+    pass "${gpus} GPU(s) visible, profile needs ${want}"
+  elif [[ "${gpus}" -gt "${want:-1}" ]]; then
+    warn "${gpus} GPU(s) visible but profile ${profile:-?} uses ${want}: the rest stay idle"
   else
-    bad "Host sees ${gpus:-0} GPU(s), release needs ${want} (VLLM_GPU_COUNT; run scripts/verify/vm-check.sh)"
+    bad "Host sees ${gpus:-0} GPU(s), profile ${profile:-?} needs ${want} (VLLM_GPU_COUNT; run scripts/verify/vm-check.sh)"
   fi
 fi
 

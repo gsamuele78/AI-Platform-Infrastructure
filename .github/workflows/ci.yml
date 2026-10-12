@@ -48,4 +48,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - run: make integration
+      # Run as root, like production (RUNBOOK): TLS files are root-owned 0600
+      # and the ingress has no DAC_OVERRIDE, so a runner-owned key is unreadable.
+      - run: sudo git config --system --add safe.directory "$GITHUB_WORKSPACE"
+      - run: sudo --preserve-env=PATH make integration

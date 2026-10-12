@@ -7,7 +7,7 @@ load ../helpers/common
 setup_file() {
   export RENDERED="${BATS_FILE_TMPDIR}/compose.json"
   docker compose --project-directory "${REPO_ROOT}" -f "${REPO_ROOT}/compose.yaml" \
-    --env-file "${REPO_ROOT}/release.env" --env-file "${REPO_ROOT}/.env.example" \
+    --env-file "${REPO_ROOT}/profiles/l40s-2.env" --env-file "${REPO_ROOT}/.env.example" \
     config --format json >"${RENDERED}"
 }
 
@@ -19,9 +19,11 @@ q() { jq -r "$@" "${RENDERED}"; }
 }
 
 @test "compose fails fast when a required secret is missing" {
-  : >"${BATS_TEST_TMPDIR}/empty.env"
+  # Drop only the master key: Compose versions differ in which missing
+  # variable they report first, so leave exactly one missing.
+  grep -v '^LITELLM_MASTER_KEY=' "${REPO_ROOT}/.env.example" >"${BATS_TEST_TMPDIR}/partial.env"
   run docker compose --project-directory "${REPO_ROOT}" -f "${REPO_ROOT}/compose.yaml" \
-    --env-file "${REPO_ROOT}/release.env" --env-file "${BATS_TEST_TMPDIR}/empty.env" config -q
+    --env-file "${REPO_ROOT}/profiles/l40s-2.env" --env-file "${BATS_TEST_TMPDIR}/partial.env" config -q
   assert_failure
   assert_output_contains "LITELLM_MASTER_KEY"
 }
@@ -47,7 +49,7 @@ q() { jq -r "$@" "${RENDERED}"; }
 @test "nginx template: modern TLS only, API exposes /v1 only, ACME challenge on port 80" {
   local t="${REPO_ROOT}/configs/ingress/templates/lifewatch.conf.template"
   grep -q 'ssl_protocols TLSv1.2 TLSv1.3;' "${t}"
-  ! grep -Eq 'TLSv1(\.[01])?[ ;]' <(grep ssl_protocols "${t}" | sed 's/TLSv1.2//; s/TLSv1.3//')
+  refute grep -Eq 'TLSv1(\.[01])?[ ;]' <(grep ssl_protocols "${t}" | sed 's/TLSv1.2//; s/TLSv1.3//')
   grep -q 'location /.well-known/acme-challenge/' "${t}"
   grep -q 'listen 8443 ssl' "${t}"
   grep -q 'location /v1/' "${t}"
@@ -56,7 +58,7 @@ q() { jq -r "$@" "${RENDERED}"; }
 
 @test "certbot is a tools-profile service: pinned, never started by a deploy" {
   run docker compose --project-directory "${REPO_ROOT}" -f "${REPO_ROOT}/compose.yaml" \
-    --env-file "${REPO_ROOT}/release.env" --env-file "${REPO_ROOT}/.env.example" --profile tools config --format json
+    --env-file "${REPO_ROOT}/profiles/l40s-2.env" --env-file "${REPO_ROOT}/.env.example" --profile tools config --format json
   assert_status 0
   [[ "$(jq -r '.services.certbot.image' <<<"${output}")" =~ ^certbot/certbot:v[0-9.]+@sha256:[0-9a-f]{64}$ ]]
   [[ "$(q '.services | has("certbot")')" == false ]]
@@ -113,9 +115,28 @@ q() { jq -r "$@" "${RENDERED}"; }
   [[ "$(q "${env}.OPENAI_API_KEY")" != "$(q '.services["litellm-gateway"].environment.LITELLM_MASTER_KEY')" ]]
 }
 
-@test "LiteLLM serves exactly the model alias vLLM exposes, in every release profile" {
+@test "Open WebUI takes roles and groups from Keycloak, never creates groups itself" {
+  local env='.services["open-webui"].environment'
+  [[ "$(q "${env}.ENABLE_OAUTH_ROLE_MANAGEMENT")" == true ]]
+  [[ -n "$(q "${env}.OAUTH_ALLOWED_ROLES // empty")" && -n "$(q "${env}.OAUTH_ADMIN_ROLES // empty")" ]]
+  [[ "$(q "${env}.OAUTH_ALLOWED_ROLES")" != *"*"* ]] # a wildcard would admit every Keycloak user
+  [[ "$(q "${env}.DEFAULT_USER_ROLE")" == pending ]]
+  [[ "$(q "${env}.ENABLE_OAUTH_GROUP_MANAGEMENT")" == true ]]
+  [[ "$(q "${env}.ENABLE_OAUTH_GROUP_CREATION")" == false ]]
+}
+
+@test "the gateway prices tokens, so key budgets can trip (R3-03)" {
+  local k v
+  for k in input_cost_per_token output_cost_per_token; do
+    v="$(yq -r ".model_list[0].litellm_params.${k}" "${REPO_ROOT}/configs/proxy/config.yaml")"
+    awk -v v="${v}" 'BEGIN { exit !(v + 0 > 0) }' || { echo "${k}=${v}"; false; }
+  done
+}
+
+@test "LiteLLM serves exactly the model alias vLLM exposes, in every GPU profile" {
   local f served
-  for f in release.env release.lab.env; do
+  for f in "${REPO_ROOT}"/profiles/*.env; do
+    f="${f#"${REPO_ROOT}"/}"
     served="$(grep '^SERVED_MODEL_NAME=' "${REPO_ROOT}/${f}" | cut -d= -f2)"
     run yq -r '.model_list[].litellm_params.model' "${REPO_ROOT}/configs/proxy/config.yaml"
     [[ "${output}" == "openai/${served}" ]] || { echo "${f}: ${served} vs ${output}"; false; }
@@ -124,18 +145,43 @@ q() { jq -r "$@" "${RENDERED}"; }
   done
 }
 
-@test "the production profile uses both GPUs with tensor parallelism" {
-  [[ "$(q '.services["vllm-backend"].deploy.resources.reservations.devices[0].count')" == 2 ]]
-  [[ "$(q '.services["vllm-backend"].command | join(" ")')" == *"--tensor-parallel-size=2"* ]]
+# render_profile NAME: rendered compose model (JSON) for profiles/NAME.env
+render_profile() {
+  docker compose --project-directory "${REPO_ROOT}" -f "${REPO_ROOT}/compose.yaml" \
+    --env-file "${REPO_ROOT}/profiles/$1.env" --env-file "${REPO_ROOT}/.env.example" config --format json
 }
 
-@test "the lab profile renders for one small GPU and pins its model revision" {
-  run docker compose --project-directory "${REPO_ROOT}" -f "${REPO_ROOT}/compose.yaml" \
-    --env-file "${REPO_ROOT}/release.lab.env" --env-file "${REPO_ROOT}/.env.example" config --format json
-  assert_status 0
-  [[ "$(jq -r '.services["vllm-backend"].deploy.resources.reservations.devices[0].count' <<<"${output}")" == 1 ]]
-  [[ "$(jq -r '.services["vllm-backend"].command | join(" ")' <<<"${output}")" == *"--tensor-parallel-size=1"* ]]
-  grep -Eq '^MODEL_REVISION=[0-9a-f]{40}$' "${REPO_ROOT}/release.lab.env"
+@test "each GPU profile reserves as many GPUs as it shards across, and pins its model (ADR-012)" {
+  local p n json
+  for p in l40s-1:1 l40s-2:2 lab:1; do
+    n=${p#*:} p=${p%%:*}
+    json="$(render_profile "${p}")"
+    [[ "$(jq -r '.services["vllm-backend"].deploy.resources.reservations.devices[0].count' <<<"${json}")" == "${n}" ]] || { echo "${p}: GPU count"; false; }
+    [[ "$(jq -r '.services["vllm-backend"].command | join(" ")' <<<"${json}")" == *"--tensor-parallel-size=${n}"* ]] || { echo "${p}: TP"; false; }
+    grep -Eq '^MODEL_REVISION=[0-9a-f]{40}$' "${REPO_ROOT}/profiles/${p}.env"
+    grep -qx "PROFILE_NAME=${p}" "${REPO_ROOT}/profiles/${p}.env"
+    grep -qx "PROFILE_GPUS=${n}" "${REPO_ROOT}/profiles/${p}.env"
+    grep -Eqx 'PROFILE_STATUS=(candidate|validated|lab)' "${REPO_ROOT}/profiles/${p}.env"
+  done
+}
+
+@test "every profile turns on tool calling with a parser vLLM knows (ADR-014)" {
+  local p cmd
+  for p in l40s-1 l40s-2 lab; do
+    cmd="$(render_profile "${p}" | jq -r '.services["vllm-backend"].command | join(" ")')"
+    [[ "${cmd}" == *"--enable-auto-tool-choice"* ]] || { echo "${p}: tool choice off"; false; }
+    # Parser names registered in vLLM v0.31.0 (vllm/tool_parsers, vllm/reasoning).
+    [[ "${cmd}" =~ --tool-call-parser=(hermes|qwen3_coder|qwen3_xml|llama3_json|openai|mistral)( |$) ]] || { echo "${p}: tool parser"; false; }
+    [[ "${cmd}" =~ --reasoning-parser=(qwen3|deepseek_r1|openai_gptoss)( |$) ]] || { echo "${p}: reasoning parser"; false; }
+  done
+}
+
+@test "a profile serves at least 64k context unless it is the lab (ADR-014 contract)" {
+  local p len
+  for p in l40s-1 l40s-2; do
+    len="$(grep '^VLLM_MAX_MODEL_LEN=' "${REPO_ROOT}/profiles/${p}.env" | cut -d= -f2)"
+    [[ "${len}" -ge 65536 ]] || { echo "${p}: ${len}"; false; }
+  done
 }
 
 @test "LiteLLM config is GitOps-only and uses a routing strategy that needs no Redis" {

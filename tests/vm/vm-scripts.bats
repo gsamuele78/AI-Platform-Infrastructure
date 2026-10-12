@@ -19,6 +19,8 @@ case "$*" in
   *topo*) echo "GPU0 GPU1: NS" ;;
   *) echo "nvidia-smi ok" ;;
 esac'
+  printf '01:00.0 0302: 10de:26b9 (rev a1)\n02:00.0 0302: 10de:26b9 (rev a1)\n' >"${SANDBOX}/lspci.out"
+  stub_lspci
 }
 
 # ---- vm-check ------------------------------------------------------------------
@@ -33,6 +35,28 @@ esac'
   run bash "${VMCHECK}"
   assert_failure
   assert_output_contains "expected 2"
+}
+
+@test "vm-check passes with one L40S passed through (profile l40s-1)" {
+  echo '01:00.0 0302: 10de:26b9 (rev a1)' >"${SANDBOX}/lspci.out"
+  stub nvidia-smi 'case "$*" in *memory.total*) echo "NVIDIA L40S, 46068" ;; *) echo ok ;; esac'
+  run bash "${VMCHECK}"
+  assert_status 0
+  assert_output_contains "1 L40S on the PCI bus"
+}
+
+@test "vm-check fails when a passed-through card is not usable by the driver" {
+  echo '01:00.0 0302: 10de:26b9 (rev a1)' >>"${SANDBOX}/lspci.out" # 3 on the bus
+  run bash "${VMCHECK}"
+  assert_failure
+  assert_output_contains "1 or 2 L40S"
+}
+
+@test "vm-check fails when no L40S is on the PCI bus" {
+  : >"${SANDBOX}/lspci.out"
+  run bash "${VMCHECK}"
+  assert_failure
+  assert_output_contains "hostpci"
 }
 
 @test "vm-check fails when a GPU reports less memory than an L40S" {
@@ -67,16 +91,16 @@ exit 0'
   run env LW_MIN_FREE_GB=0 bash "${FETCH}"
   assert_status 0
   called docker "run --rm .*--entrypoint hf .*vllm/vllm-openai:v0.31.0@sha256:"
-  called docker "download RedHatAI/Qwen2.5-72B-Instruct-FP8-dynamic --revision 4d9910ef10cf92b072dad8ce7c2a2929fac4fe0f"
-  ! grep -q 'HF_TOKEN=' "${STUB_LOG}" # token passed by name, never on argv
+  called docker "download Qwen/Qwen3.8-27B-FP8 --revision 017b9c7af6b5689d5dd426a76e0bc077eb5ca20a"
+  refute grep -q 'HF_TOKEN=' "${STUB_LOG}" # token passed by name, never on argv
 }
 
-@test "fetch-model honours the lab release profile" {
-  sed "s|^MODEL_CACHE_DIR=.*|MODEL_CACHE_DIR=${SANDBOX}/cache|" "${REPO_ROOT}/release.lab.env" >"${LW_RELEASE_ENV}"
-  stub docker '[[ " $* " == *" config "* ]] && exec "$REAL_DOCKER" "$@"; [[ "$1" == run ]] && mkdir -p "$SANDBOX/cache/hub/models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/7ae557604adf67be50417f59c2c2f167def9a775" && touch "$_/x"; exit 0'
+@test "fetch-model honours the lab profile" {
+  sed "s|^MODEL_CACHE_DIR=.*|MODEL_CACHE_DIR=${SANDBOX}/cache|" "${REPO_ROOT}/profiles/lab.env" >"${LW_RELEASE_ENV}"
+  stub docker '[[ " $* " == *" config "* ]] && exec "$REAL_DOCKER" "$@"; [[ "$1" == run ]] && mkdir -p "$SANDBOX/cache/hub/models--Qwen--Qwen3.5-0.8B/snapshots/2fc06364715b967f1860aea9cf38778875588b17" && touch "$_/x"; exit 0'
   run env LW_MIN_FREE_GB=0 bash "${FETCH}"
   assert_status 0
-  called docker "download Qwen/Qwen2.5-0.5B-Instruct --revision 7ae557604adf67be50417f59c2c2f167def9a775"
+  called docker "download Qwen/Qwen3.5-0.8B --revision 2fc06364715b967f1860aea9cf38778875588b17"
 }
 
 @test "fetch-model fails if the snapshot is still missing afterwards" {
@@ -129,7 +153,7 @@ bootstrap_fixture() {
   bootstrap_fixture
   run bash "${BOOTSTRAP}"
   assert_status 0
-  ! grep -q get.docker.com "${STUB_LOG}"
+  refute grep -q get.docker.com "${STUB_LOG}"
   grep -q 'signed-by=' "${LW_APT_SOURCES_DIR}/docker.list"
   grep -q 'signed-by=' "${LW_APT_SOURCES_DIR}/nvidia-container-toolkit.list"
   called apt-get "install -y .*docker-ce .*nvidia-container-toolkit"
@@ -141,14 +165,14 @@ bootstrap_fixture() {
   run bash "${BOOTSTRAP}"
   assert_status 0
   called apt-mark "hold .*docker-ce .*containerd.io .*nvidia-container-toolkit .*nvidia-utils-580-server"
-  ! called apt-mark "nvidia-kernel-common" # not installed: apt-mark would fail
+  refute called apt-mark "nvidia-kernel-common" # not installed: apt-mark would fail
 }
 
 @test "bootstrap restarts docker only when the runtime config changed" {
   bootstrap_fixture
   run bash "${BOOTSTRAP}"
   assert_status 0
-  ! called systemctl "restart docker"
+  refute called systemctl "restart docker"
   stub nvidia-ctk 'echo "{\"runtimes\":{\"nvidia\":{}}}" >"$LW_DOCKER_DAEMON_JSON"'
   run bash "${BOOTSTRAP}"
   assert_status 0
@@ -167,3 +191,19 @@ bootstrap_fixture() {
   run bash "${ISSUE}"
   assert_failure
 }
+
+@test "issue-key sets per-key rate, token and concurrency limits" {
+  run bash -c "bash '${ISSUE}' --alias agent-x --rpm 60 --tpm 200000 --max-parallel 2 --max-budget 50 2>/dev/null"
+  assert_status 0
+  jq -e '.rpm_limit == 60 and .tpm_limit == 200000 and .max_parallel_requests == 2 and .max_budget == 50
+    and .models == ["lifewatch-chat"] and .key_alias == "agent-x"' "${SANDBOX}/keygen.payload"
+}
+
+@test "issue-key rejects non-numeric limits before calling the gateway" {
+  run bash "${ISSUE}" --alias a --rpm lots
+  assert_failure
+  run bash "${ISSUE}" --alias a --max-budget 'x;y'
+  assert_failure
+  not_called curl
+}
+

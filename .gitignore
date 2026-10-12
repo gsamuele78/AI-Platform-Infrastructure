@@ -1,8 +1,7 @@
 # Environment & Secrets
 .env
 *.env
-!release.env
-!release.lab.env
+!profiles/*.env
 !tests/lab/*.env
 !tests/integration/*.env
 *.pem
@@ -29,3 +28,8 @@
 
 # Vagrant state
 .vagrant/
+
+# Python bytecode and agent-plugin session state (audit R3-07)
+__pycache__/
+*.pyc
+.omo/

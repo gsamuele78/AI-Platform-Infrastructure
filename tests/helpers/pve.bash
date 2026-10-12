@@ -8,6 +8,11 @@ load_pve_fixture() {
   export LW_MODPROBE_DIR="${SANDBOX}/etc/modprobe.d"
   export LW_PVE_BACKUP_ROOT="${SANDBOX}/backups"
   export QM_DIR="${SANDBOX}/qm"
+  # qm's config files double as /etc/pve/qemu-server/<vmid>.conf
+  export LW_QEMU_CONF_DIR="${QM_DIR}"
+  export LW_MODULES_LOAD_LINK="${SANDBOX}/etc/modules-load.d/modules.conf"
+  mkdir -p "$(dirname "${LW_MODULES_LOAD_LINK}")"
+  ln -sfn ../modules "${LW_MODULES_LOAD_LINK}"
   mkdir -p "${LW_SYSFS_ROOT}/bus/pci/devices" "${LW_SYSFS_ROOT}/kernel/iommu_groups" \
     "${LW_MODPROBE_DIR}" "${QM_DIR}" "$(dirname "${LW_ETC_MODULES}")"
   printf '# /etc/modules: kernel modules to load at boot time.\n' >"${LW_ETC_MODULES}"
@@ -15,7 +20,7 @@ load_pve_fixture() {
 
   stub pveversion 'echo "pve-manager/9.2.1/abcdef (running kernel: 6.14.8-2-pve)"'
   stub update-initramfs ''
-  stub lspci 'cat "$SANDBOX/lspci.out"'
+  stub_lspci
   # Minimal qm emulation backed by $QM_DIR/<vmid>.conf and $QM_DIR/<vmid>.status
   stub qm '
 cmd=$1; vmid=$2; shift 2

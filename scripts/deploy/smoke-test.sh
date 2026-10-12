@@ -8,7 +8,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 # shellcheck source=scripts/lib/stack.sh
 source "${LW_REPO_ROOT}/scripts/lib/stack.sh"
 
-REL_ENV="${LW_RELEASE_ENV}"
+REL_ENV=""
 INFERENCE=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,6 +24,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+[[ -n "${REL_ENV}" ]] || REL_ENV="$(active_release_env)" || die "No release to test (deploy first or pass --release-dir)"
 MODEL="$(env_value "${REL_ENV}" SERVED_MODEL_NAME)"
 MASTER="$(env_value "${LW_ENV_FILE}" LITELLM_MASTER_KEY)"
 BODY="$(mktemp)"
@@ -81,6 +82,24 @@ fi
 
 if [[ "${INFERENCE}" == true ]]; then
   check "End-to-end inference through gateway to vLLM" 200 "$(http POST "${LW_GATEWAY_URL}/v1/chat/completions" "${MASTER}" "${CHAT}")"
+
+  # ADR-014: agents send tools with tool_choice=auto. vLLM rejects that unless
+  # auto tool choice is on (R3-02), so HTTP 200 is the regression check; any
+  # call the model makes must name the offered tool with JSON-object arguments.
+  # Whether the model *chooses* tools well is measured in PLAN P5, not here.
+  TOOLS="$(jq -nc --arg m "${MODEL}" '{model: $m, max_tokens: 256,
+    messages: [{role: "user", content: "What is the current UTC time? Use the tool."}],
+    tools: [{type: "function", function: {name: "get_utc_time", description: "Current UTC time",
+      parameters: {type: "object", properties: {}}}}], tool_choice: "auto"}')"
+  code="$(http POST "${LW_GATEWAY_URL}/v1/chat/completions" "${MASTER}" "${TOOLS}")"
+  if [[ "${code}" == 200 ]] && jq -e '(.choices[0].message.tool_calls // [])
+      | all(.function.name == "get_utc_time" and ((.function.arguments // "{}") | fromjson | type == "object"))' \
+      "${BODY}" >/dev/null 2>&1; then
+    pass "Tool calling accepted with tool_choice=auto ($(jq '.choices[0].message.tool_calls // [] | length' "${BODY}") well-formed call(s)) (HTTP 200)"
+  else
+    fail "Tool calling (tool_choice=auto): HTTP ${code}, or a malformed tool call; check --enable-auto-tool-choice and the profile's VLLM_TOOL_CALL_PARSER"
+    errors=$((errors + 1))
+  fi
 fi
 
 check "Open WebUI health" 200 "$(http GET "${LW_WEBUI_HEALTH_URL}")"

@@ -3,7 +3,8 @@
 # (it sits on an internal network with no egress and HF_HUB_OFFLINE=1).
 # Uses the exact vLLM image of the release, so the huggingface_hub that
 # downloads is the one that will read the cache.
-#   fetch-model.sh       (reads MODEL_ID / MODEL_REVISION from release.env)
+#   fetch-model.sh       (reads MODEL_ID / MODEL_REVISION from the GPU profile:
+#                         detected, or LW_PROFILE=l40s-1|l40s-2)
 set -euo pipefail
 
 # shellcheck source=scripts/lib/common.sh
@@ -13,9 +14,11 @@ source "${LW_REPO_ROOT}/scripts/lib/stack.sh"
 
 : "${LW_MIN_FREE_GB:=100}"
 
-MODEL_ID="$(env_value "${LW_RELEASE_ENV}" MODEL_ID)"
-REVISION="$(env_value "${LW_RELEASE_ENV}" MODEL_REVISION)"
-CACHE="$(env_value "${LW_RELEASE_ENV}" MODEL_CACHE_DIR)"
+PROFILE_FILE="$(release_env_file)" || die "Could not select a GPU profile (ADR-012)"
+MODEL_ID="$(env_value "${PROFILE_FILE}" MODEL_ID)"
+REVISION="$(env_value "${PROFILE_FILE}" MODEL_REVISION)"
+CACHE="$(env_value "${PROFILE_FILE}" MODEL_CACHE_DIR)"
+info "Profile: ${PROFILE_FILE#"${LW_REPO_ROOT}"/}"
 [[ "${REVISION}" =~ ^[0-9a-f]{40}$ ]] || die "MODEL_REVISION must be a full 40-char commit sha, got '${REVISION}'"
 SNAPSHOT="${CACHE}/hub/models--${MODEL_ID//\//--}/snapshots/${REVISION}"
 

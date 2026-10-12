@@ -16,6 +16,8 @@ export LW_STATE_DIR="${WORK}/state"
 export LW_ENV_FILE="${WORK}/ci.env"
 export LW_WAIT_TIMEOUT=900
 export LW_COMPOSE_OVERRIDES=tests/integration/compose.fake-vllm.yaml
+# No GPU in CI: name the production profile instead of detecting it.
+export LW_PROFILE=l40s-2 LW_ALLOW_UNVALIDATED=true
 PEBBLE_IMAGE="ghcr.io/letsencrypt/pebble:2.10.1@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199"
 PY_IMAGE="python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4"
 NET="${LW_PROJECT}_frontend-net"
@@ -87,6 +89,21 @@ SECOND="$(current)"
 [[ "${SECOND}" != "${FIRST}" ]]
 [[ -n "$(find "${BACKUP_DIR}" -mindepth 2 -maxdepth 2 -name SHA256SUMS)" ]]
 [[ -n "$(find "${BACKUP_DIR}" -mindepth 2 -maxdepth 2 -name tls.tgz)" ]]
+
+step "3b. Per-key limits and budgets are enforced by the real gateway (ADR-014, R3-03)"
+agent="$(bash "${REPO}/scripts/ops/issue-key.sh" --alias ci-agent --rpm 2 --max-parallel 1 --max-budget 1)"
+chat() { curl -s -o "${WORK}/chat.json" -w '%{http_code}' -X POST http://127.0.0.1:4000/v1/chat/completions \
+  -H "Authorization: Bearer $1" -H 'Content-Type: application/json' \
+  -d '{"model":"lifewatch-chat","messages":[{"role":"user","content":"ping"}],"max_tokens":1}'; }
+codes="$(chat "${agent}") $(chat "${agent}") $(chat "${agent}")"
+[[ "${codes}" == "200 200 429" ]] || { echo "rpm_limit=2: expected '200 200 429', got '${codes}'" >&2; exit 1; }
+spend=0
+for _ in $(seq 1 20); do # spend is written asynchronously
+  spend="$(curl -s -H "Authorization: Bearer ${agent}" http://127.0.0.1:4000/key/info | jq -r '.info.spend // 0')"
+  awk -v s="${spend}" 'BEGIN { exit !(s > 0) }' && break
+  sleep 3
+done
+awk -v s="${spend}" 'BEGIN { exit !(s > 0) }' || { echo "spend stayed ${spend}: budgets would never trip" >&2; exit 1; }
 
 step "4. A release that never becomes healthy is rolled back automatically"
 sleep 1
