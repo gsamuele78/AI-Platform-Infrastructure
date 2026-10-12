@@ -1,0 +1,39 @@
+# Image digests in compose.yaml and the action SHAs in the workflows (audit
+# R3-09). Every Dependabot PR runs the full CI (policy + integration); merge an
+# image bump only after RUNBOOK section 8 (release notes, lab, maintenance window).
+version: 2
+updates:
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Let new releases settle before they are proposed.
+    cooldown:
+      default-days: 7
+    ignore:
+      # A Postgres major changes the data directory format: a planned
+      # migration, never an automatic bump (ADR-010).
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # vLLM changes cost a model reload and need AC-3.1 on the host, so it
+      # always gets its own PR.
+      services-minor-patch:
+        update-types: [minor, patch]
+        exclude-patterns: ["vllm/*"]
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

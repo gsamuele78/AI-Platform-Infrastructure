@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lab acceptance on ONE real NVIDIA GPU (e.g. a laptop RTX A2000, 4 GB):
 # the production images and scripts end to end, with real vLLM inference on
-# Qwen2.5-0.5B (release.lab.env) instead of the 72B.
+# Qwen3.5-0.8B (profiles/lab.env) instead of the production model.
 #   tests/lab/run-gpu.sh [--keep]
 # Engine: rootless Podman by default (a dedicated service with its own storage
 # under LAB_DIR, see podman-service.sh; your normal Podman is not touched), or
@@ -36,9 +36,9 @@ esac
 export LW_PROJECT=lwlab
 export LW_STATE_DIR="${LAB_DIR}/state"
 export LW_ENV_FILE="${LAB_DIR}/lab.env"
-export LW_RELEASE_ENV="${LAB_DIR}/release.lab.env"
+export LW_RELEASE_ENV="${LAB_DIR}/lab-profile.env"
 export LW_WAIT_TIMEOUT=1200
-sed "s|^MODEL_CACHE_DIR=.*|MODEL_CACHE_DIR=${LAB_DIR}/vllm_cache|" "${REPO}/release.lab.env" >"${LW_RELEASE_ENV}"
+sed "s|^MODEL_CACHE_DIR=.*|MODEL_CACHE_DIR=${LAB_DIR}/vllm_cache|" "${REPO}/profiles/lab.env" >"${LW_RELEASE_ENV}"
 install -m 600 "${REPO}/tests/lab/lab.env" "${LW_ENV_FILE}"
 sed -i -e "s|^TLS_DIR=.*|TLS_DIR=${LAB_DIR}/tls|" -e "s|^BACKUP_DIR=.*|BACKUP_DIR=${LAB_DIR}/backups|" "${LW_ENV_FILE}"
 mkdir -p "${LAB_DIR}/backups" "${LAB_DIR}/vllm_cache"

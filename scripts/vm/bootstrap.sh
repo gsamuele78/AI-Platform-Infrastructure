@@ -25,7 +25,7 @@ ARCH="$(dpkg --print-architecture)"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -y -q ca-certificates curl gnupg jq ubuntu-drivers-common
+apt-get install -y -q ca-certificates curl gnupg jq pciutils ubuntu-drivers-common
 
 mkdir -p "${LW_KEYRINGS_DIR}" "${LW_APT_SOURCES_DIR}"
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o "${LW_KEYRINGS_DIR}/docker.asc"

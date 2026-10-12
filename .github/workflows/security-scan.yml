@@ -1,0 +1,53 @@
+# Weekly CVE report for every image the stack runs (audit R3-09). Report-only:
+# upstream images carry CVEs this repository cannot fix in place; the counts go
+# to the job summary, and Dependabot proposes the bumps. Same approach as
+# Infra-Iam-PKI's security-scan.yml.
+name: security-scan
+
+on:
+  schedule:
+    - cron: "0 5 * * 1" # Monday 05:00 UTC
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: [compose.yaml, .github/workflows/security-scan.yml]
+
+permissions:
+  contents: read
+
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+
+jobs:
+  images:
+    name: trivy CVE report (report-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: scan every image in compose.yaml
+        run: |
+          set -euo pipefail
+          {
+            echo "### Fixable CRITICAL/HIGH vulnerabilities"
+            echo "| image | CRITICAL | HIGH |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          images="$(docker compose --env-file profiles/l40s-2.env --env-file .env.example --profile tools config --images | sort -u)"
+          for img in ${images}; do
+            echo "::group::${img}"
+            # --image-src remote: read layers from the registry without a local
+            # pull (the vLLM image alone is ~10 GB).
+            if docker run --rm -v "${RUNNER_TEMP}:/out" "${TRIVY_IMAGE}" image --image-src remote \
+                --severity CRITICAL,HIGH --ignore-unfixed --no-progress --format json --quiet \
+                --output /out/r.json "${img}"; then
+              crit="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "${RUNNER_TEMP}/r.json")"
+              high="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "${RUNNER_TEMP}/r.json")"
+              echo "| \`${img%%@*}\` | ${crit} | ${high} |" >> "$GITHUB_STEP_SUMMARY"
+              [ "${crit}" -eq 0 ] || echo "::warning::${img%%@*} has ${crit} fixable CRITICAL vulnerabilities"
+            else
+              echo "| \`${img%%@*}\` | scan failed | |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::${img%%@*}: scan failed"
+            fi
+            echo "::endgroup::"
+          done

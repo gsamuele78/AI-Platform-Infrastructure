@@ -14,6 +14,7 @@ load_stack_fixture() {
   export LW_STATE_DIR="${SANDBOX}/state"
   export LW_ENV_FILE="${SANDBOX}/dot.env"
   export LW_RELEASE_ENV="${SANDBOX}/release.env"
+  export LW_ALLOW_UNVALIDATED=true
   export LW_WAIT_TIMEOUT=30
   export STUB_MASTER_KEY="sk-test-master-0123456789abcdef0123456789"
   export SERVED_MODEL=lifewatch-chat
@@ -29,7 +30,7 @@ load_stack_fixture() {
     "${REPO_ROOT}/.env.example" >"${LW_ENV_FILE}"
   chmod 600 "${LW_ENV_FILE}"
 
-  sed "s|^MODEL_CACHE_DIR=.*|MODEL_CACHE_DIR=${SANDBOX}/cache|" "${REPO_ROOT}/release.env" >"${LW_RELEASE_ENV}"
+  sed "s|^MODEL_CACHE_DIR=.*|MODEL_CACHE_DIR=${SANDBOX}/cache|" "${REPO_ROOT}/profiles/l40s-2.env" >"${LW_RELEASE_ENV}"
   local id rev
   id="$(grep '^MODEL_ID=' "${LW_RELEASE_ENV}" | cut -d= -f2)"
   rev="$(grep '^MODEL_REVISION=' "${LW_RELEASE_ENV}" | cut -d= -f2)"
@@ -90,13 +91,13 @@ exit 0
 EOF
 )"
   stub curl "$(cat <<'EOF'
-out=/dev/null url="" auth="" method=GET
+out=/dev/null url="" auth="" method=GET data=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o) out=$2; shift 2 ;;
     -H) [[ "$2" == Authorization:* ]] && auth=${2#Authorization: Bearer }; shift 2 ;;
     -X) method=$2; shift 2 ;;
-    -d|--data) method=POST; shift 2 ;;
+    -d|--data) method=POST; data=$2; shift 2 ;;
     -w|--max-time|-m|--resolve|--cacert) shift 2 ;;
     http*) url=$1; shift ;;
     *) shift ;;
@@ -117,8 +118,11 @@ case "$url" in
   */v1/chat/completions)
     if [[ -z "$auth" ]]; then code 401 '{"error":"no key"}' unauth
     elif [[ "$auth" != "$STUB_MASTER_KEY" ]]; then code 401 '{"error":"bad key"}' badkey
+    elif [[ "$data" == *'"tools"'* && ! -f "$SANDBOX/no-tools" ]]; then
+      code 200 '{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"get_utc_time","arguments":"{}"}}]}}]}' tools
+    elif [[ "$data" == *'"tools"'* ]]; then code 400 '{"error":"auto tool choice requires --enable-auto-tool-choice"}' tools
     else code 200 '{"choices":[{"message":{"content":"o"}}]}' inference; fi ;;
-  */key/generate) code 200 '{"key":"sk-generated-virtual-key"}' keygen ;;
+  */key/generate) printf "%s" "$data" >"$SANDBOX/keygen.payload"; code 200 '{"key":"sk-generated-virtual-key"}' keygen ;;
   *) printf '000'; exit 7 ;;
 esac
 EOF

@@ -44,12 +44,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._authorised():
             return
+        tools = request.get("tools") or []
+        if tools:
+            # Same shape vLLM returns with --enable-auto-tool-choice.
+            name = tools[0]["function"]["name"]
+            message = {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "call-fake", "type": "function", "function": {"name": name, "arguments": "{}"}}]}
+            finish = "tool_calls"
+        else:
+            message, finish = {"role": "assistant", "content": "pong"}, "stop"
         self._send(200, {
             "id": "chatcmpl-fake",
             "object": "chat.completion",
             "created": int(time.time()),
             "model": request.get("model", MODEL),
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": "pong"}, "finish_reason": "stop"}],
+            "choices": [{"index": 0, "message": message, "finish_reason": finish}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         })
 

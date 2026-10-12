@@ -54,7 +54,7 @@ setup() {
   run bash "${SCRIPT}" --backup-dir "${BACKUP}"
   assert_status 0
   assert_output_contains "DRY-RUN"
-  ! called qm "set"
+  refute called qm "set"
   cmp "${QM_DIR}/100.conf" "${SANDBOX}/vm.applied"
 }
 
@@ -73,7 +73,7 @@ setup() {
   run bash "${SCRIPT}" --backup-dir "${BACKUP}" --apply
   assert_status 0
   grep -q '^net0: virtio=AA:BB:CC:DD:EE:FF' "${QM_DIR}/100.conf"
-  ! grep -q '^hostpci' "${QM_DIR}/100.conf"
+  refute grep -q '^hostpci' "${QM_DIR}/100.conf"
 }
 
 @test "refuses (and changes nothing) when a managed hostpci entry drifted" {
@@ -82,7 +82,7 @@ setup() {
   run bash "${SCRIPT}" --backup-dir "${BACKUP}" --apply
   assert_failure
   assert_output_contains "hostpci1"
-  ! called qm "set"
+  refute called qm "set"
   cmp "${LW_ETC_MODULES}" "${SANDBOX}/modules.applied"
 }
 
@@ -91,7 +91,7 @@ setup() {
   run bash "${SCRIPT}" --backup-dir "${BACKUP}" --apply
   assert_failure
   assert_output_contains "modules"
-  ! called qm "set"
+  refute called qm "set"
 }
 
 @test "refuses while the VM is running" {

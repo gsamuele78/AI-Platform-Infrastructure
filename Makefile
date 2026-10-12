@@ -5,7 +5,7 @@ SHELL := bash
 BATS ?= bats
 GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 SCRIPTS := $(wildcard scripts/*/*.sh) tests/integration/run.sh $(wildcard tests/lab/*.sh)
-COMPOSE_CI := docker compose --env-file release.env --env-file .env.example
+COMPOSE_CI := docker compose --env-file profiles/l40s-2.env --env-file .env.example
 
 .PHONY: help lint test integration secrets ci vm-test vm-destroy lab-gpu preflight deploy rollback backup
 

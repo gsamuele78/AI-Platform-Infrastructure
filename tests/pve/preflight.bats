@@ -27,17 +27,63 @@ setup() {
   assert_output_contains "IOMMU"
 }
 
-@test "fails when the GPU count differs from the expected count" {
+@test "passes with a single L40S (profile l40s-1)" {
   fake_gpu 0000:41:00.0 30
   run bash "${SCRIPT}"
+  assert_status 0
+  assert_output_contains "profile l40s-1"
+}
+
+@test "fails when no L40S is present" {
+  run bash "${SCRIPT}"
+  assert_failure
+  assert_output_contains "No GPU"
+}
+
+@test "fails when LW_EXPECTED_GPUS is set and the host count differs" {
+  fake_gpu 0000:41:00.0 30
+  run env LW_EXPECTED_GPUS=2 bash "${SCRIPT}"
   assert_failure
   assert_output_contains "expected 2"
 }
 
-@test "honours LW_EXPECTED_GPUS" {
-  fake_gpu 0000:41:00.0 30
-  run env LW_EXPECTED_GPUS=1 bash "${SCRIPT}"
+@test "more than two L40S need an explicit --gpu selection" {
+  two_isolated_gpus
+  fake_gpu 0000:81:00.0 50
+  run bash "${SCRIPT}"
+  assert_failure
+  assert_output_contains "1 or 2"
+  run bash "${SCRIPT}" --gpu 0000:41:00.0 --gpu 81:00
   assert_status 0
+  assert_output_contains "Selected for the VM: 0000:41:00.0 0000:81:00.0"
+}
+
+@test "a card that is not selected may share its IOMMU group" {
+  two_isolated_gpus
+  fake_pci 0000:c2:00.0 0x020000 70 # NIC in GPU 1's group
+  run bash "${SCRIPT}" --gpu 0000:41:00.0
+  assert_status 0
+  run bash "${SCRIPT}"
+  assert_failure
+  assert_output_contains "0000:c2:00.0"
+}
+
+@test "rejects a --gpu that is not an L40S on this host" {
+  two_isolated_gpus
+  run bash "${SCRIPT}" --gpu 0000:05:00.0
+  assert_failure
+  assert_output_contains "not an L40S"
+  run bash "${SCRIPT}" --gpu 'x;reboot'
+  assert_failure
+  assert_output_contains "not a PCI address"
+}
+
+@test "warns when /etc/modules is not read at boot" {
+  two_isolated_gpus
+  rm "${LW_MODULES_LOAD_LINK}"
+  run bash "${SCRIPT}"
+  assert_status 0
+  assert_output_contains "modules-load.d"
 }
 
 @test "fails when a GPU shares its IOMMU group with an unrelated device" {

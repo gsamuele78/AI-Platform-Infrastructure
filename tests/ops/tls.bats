@@ -25,7 +25,7 @@ fp_of() { openssl x509 -in "$1" -noout -fingerprint -sha256; }
   openssl verify -CAfile "${TLS_DIR}/live/ca.pem" "${TLS_DIR}/live/fullchain.pem"
   [[ "$(stat -c %a "${TLS_DIR}/live/privkey.pem")" == 600 ]]
   [[ "$(stat -c %a "${TLS_DIR}/ca")" == 700 ]]
-  ! openssl x509 -in "${TLS_DIR}/live/fullchain.pem" -noout -ext basicConstraints | grep -q 'CA:TRUE'
+  [[ "$(openssl x509 -in "${TLS_DIR}/live/fullchain.pem" -noout -ext basicConstraints 2>/dev/null)" != *CA:TRUE* ]]
 }
 
 @test "self-signed: re-running renews the leaf but keeps the CA users already trust" {
@@ -126,7 +126,7 @@ deployed() {
   run bash "${LE}" --email ops@lifewatch.test
   assert_failure
   cmp "${TLS_DIR}/live/fullchain.pem" "${SANDBOX}/before.pem"
-  ! called docker "nginx -s reload"
+  refute called docker "nginx -s reload"
 }
 
 @test "letsencrypt: refuses to install a certificate that does not cover PUBLIC_HOSTNAME" {
@@ -147,7 +147,7 @@ deployed() {
   run bash "${LE}" --renew
   assert_status 0
   called docker "run --rm certbot renew"
-  ! called docker "nginx -s reload"
+  refute called docker "nginx -s reload"
 }
 
 @test "letsencrypt: --renew installs and reloads when certbot renewed" {

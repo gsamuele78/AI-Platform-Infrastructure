@@ -14,6 +14,24 @@
 | Public trust for TLS | TLS works with the self-signed lab CA; Let's Encrypt is implemented but needs the public name and port 80 reachable. | DEC-002 |
 | Backups not yet off-host | They now go to a dedicated mount; it still has to become (or sync to) an external share. | DEC-006 |
 
+## Round 3 (2026-10-12): cross-repo and hybrid-agent review
+
+Compared with AiAgentInfrastructure, Infra-Iam-PKI and the OpenHands repositories. The analysis is in [PRACTICES_EVALUATION.md](../plan/PRACTICES_EVALUATION.md) and the work in [PLAN.md](../plan/PLAN.md). The topology changed: this platform gets one **or** two L40S, with the profile chosen by hardware detection ([ADR-012](../adr/ADR-012-gpu-profiles-from-hardware-detection.md)), and the second card goes to TensorFlow compute only if a benchmark justifies it ([ADR-015](../adr/ADR-015-second-gpu-allocation-by-benchmark.md)). It must also serve agents ([ADR-014](../adr/ADR-014-agent-client-contract.md)). Code changes followed the same day (see the Resolution column).
+
+| ID | Sev. | Finding | Evidence | Resolution |
+| :-- | :-- | :-- | :-- | :-- |
+| R3-01 | HIGH | CI on `main` is red: a policy test depends on which missing variable the Compose version reports first. The claim below that CI runs on every push was true; the claim that it passes no longer is. | Actions run 2026-10-12, `not ok 2 compose fails fast when a required secret is missing` | **Fixed** (test leaves exactly one variable missing) |
+| R3-02 | HIGH | Tool calling is off (`enable_auto_tool_choice` defaults to False in vLLM v0.31.0), so agents cannot use the platform | vLLM `entrypoints/launchers/cli_args.py` at `v0.31.0` | **Fixed**: `--enable-auto-tool-choice` + parser per profile; smoke test checks `tool_choice: auto` |
+| R3-03 | MEDIUM | Key budgets are probably always 0 for the self-hosted model (no price set), and keys have no rpm/tpm/parallel limits | `configs/proxy/config.yaml`, `issue-key.sh` | **Fixed** in config (`input/output_cost_per_token`, `issue-key.sh --rpm/--tpm/--max-parallel`); integration step 3b asserts 429 and spend > 0 (runs in CI) |
+| R3-04 | MEDIUM | 16k context is below what coding agents send (OpenHands: ≥ 22k, 32k recommended) | docs.openhands.dev local-llms | **Fixed** in the profiles: 64k (1 GPU) / 128k (2 GPU) with Qwen3.8-27B; pending P5 validation |
+| R3-05 | HIGH | "Exactly 2 GPUs" is hard-coded in host preflight, `vm-check.sh`, AC-1.1/2.1; passthrough cannot assign a subset | `scripts/lib/pve.sh`, `vm-check.sh` | **Fixed**: ADR-012 profiles, `--gpu` selection, count-agnostic checks |
+| R3-06 | MEDIUM | AiAgentInfrastructure's BIOME lane and this platform describe incompatible servers (model name, context, auth, GPUs) | `AiAgentInfrastructure/docs/BIOME-L40S.md` | ADR-014, cross-repo item |
+| R3-07 | LOW | `__pycache__/*.pyc` and `.omo/` session state are tracked in a public repo. F-25 says the obsolete generators are not in git: **they are tracked** (and so is the empty `docs/Report`) | `git ls-files` | **Fixed**: untracked, generators and `docs/Report` removed |
+| R3-08 | MEDIUM | No `AGENTS.md`, no `.claude/settings.json`: agent sessions can read `.env`, TLS keys, backups and the Vagrant private key | repository tree | **Fixed**: `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` (tested) |
+| R3-09 | MEDIUM | No dependency bot and no CVE scan for digest-pinned images | no `dependabot.yml`, no Trivy | PLAN P1 |
+| R3-10 | MEDIUM | With Infra-Iam-PKI's step-ca (24 h leaf default), renewal twice a day and fixed-day expiry thresholds leave one missed run before expiry | Infra-Iam-PKI CONTINUATION-PLAN W5; `install-timers.sh` | PLAN P7 |
+| R3-11 | MEDIUM | 24 bats assertions written as a bare `! cmd` never ran (bats ignores a negated command that is not a test's last line), e.g. "dry-run makes no `qm set` call" | bats semantics; IDE diagnostic | **Fixed**: `refute` helper; all 24 now enforced and still pass; mutation-checked |
+
 ## Round 2 (2026-10-09): upgrade, TLS, backup mount, laptop lab
 
 | ID | Change | Evidence |
@@ -56,7 +74,7 @@ Severity: **BLOCKER** = the stack could not have worked or was unsafe as written
 | F-22 | MEDIUM | The only test grepped for the string `model_list`. | tests/ (original) | 99 bats tests (behavioural tests with stubbed hardware, plus policy-as-code on the rendered Compose model) and an integration lifecycle test on real containers. |
 | F-23 | MEDIUM | The PRD KV formula used attention heads (64) instead of KV heads (8, GQA), overstating the KV cache 8×. | Model `config.json` | PRD §2 corrected and recomputed. |
 | F-24 | LOW | The Mermaid topology did not parse (parentheses in unquoted subgraph titles) and showed components that do not exist. | diagram | Fixed. |
-| F-25 | LOW | `bootstrap_repo.sh` and `build_lifewatch_platform.sh` regenerate the old files from heredocs. Running either one **reverts every fix in this audit.** | Both scripts | **Delete them.** They were left untouched because they are not in git and deleting them is the owner's call. |
+| F-25 | LOW | `bootstrap_repo.sh` and `build_lifewatch_platform.sh` regenerate the old files from heredocs. Running either one **reverts every fix in this audit.** | Both scripts | **Delete them.** They were left untouched because deleting them is the owner's call. (Correction 2026-10-12: they *are* tracked in git, R3-07; removal planned in PLAN P0.) |
 | F-26 | LOW | Obsolete `version:` key, fixed `container_name`s (block label-based operations), empty `docs/Report`. | compose.yaml, docs/ | First two fixed; `docs/Report` left for the owner. |
 
 ## What is verified, and how

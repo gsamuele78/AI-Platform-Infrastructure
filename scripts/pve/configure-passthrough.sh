@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Attach both L40S GPUs to a VM via vfio-pci passthrough.
-#   Plan (default):  configure-passthrough.sh --vm-id 100
-#   Apply:           configure-passthrough.sh --vm-id 100 --apply
+# Attach one or two L40S GPUs to a VM via vfio-pci passthrough (ADR-002, ADR-012).
+#   Plan (default):  configure-passthrough.sh --vm-id 100 [--gpu 0000:41:00.0 ...]
+#   Apply:           configure-passthrough.sh --vm-id 100 [--gpu ...] --apply
+# Without --gpu every L40S on the host is attached (at most 2). With --gpu only
+# the named cards are, e.g. to keep the second one for another VM (ADR-015).
 # Apply backs up every touched file, writes a manifest consumed by
 # scripts/rollback/rollback-passthrough.sh, and is idempotent.
 # The kernel command line is intentionally NOT modified (bootloader-specific);
@@ -14,7 +16,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 source "${LW_REPO_ROOT}/scripts/lib/pve.sh"
 
 usage() {
-  echo "Usage: $0 --vm-id <VMID> [--apply]" >&2
+  echo "Usage: $0 --vm-id <VMID> [--gpu <PCI address>]... [--apply]" >&2
   exit 2
 }
 
@@ -25,6 +27,11 @@ while [[ $# -gt 0 ]]; do
     --vm-id)
       [[ $# -ge 2 ]] || usage
       VM_ID=$2
+      shift 2
+      ;;
+    --gpu)
+      [[ $# -ge 2 ]] || usage
+      LW_REQUESTED_GPUS+=("$2")
       shift 2
       ;;
     --apply)
@@ -47,6 +54,11 @@ pve_host_checks || die "Host preflight failed; nothing was changed"
 VM_CONF="$(qm config "${VM_ID}" 2>/dev/null)" || die "VM ${VM_ID} does not exist on this node"
 pve_vm_checks "${VM_CONF}" || die "VM ${VM_ID} is not suitable for PCIe passthrough; nothing was changed"
 
+for gpu in "${LW_SELECTED_GPUS[@]}"; do
+  owners="$(pve_gpu_owner "$(pci_slot "${gpu}")" "${VM_ID}")"
+  [[ -z "${owners}" ]] || die "${gpu} is already passed through to VM(s) ${owners//$'\n'/ }; remove it there first or choose another card with --gpu. Nothing was changed"
+done
+
 # ---- Plan -------------------------------------------------------------------
 declare -A used_index=() attached_slot=()
 for i in $(seq 0 15); do
@@ -60,7 +72,7 @@ done
 PLAN_KEYS=()
 declare -A PLAN_VALUE=()
 next=0
-for gpu in "${LW_GPUS[@]}"; do
+for gpu in "${LW_SELECTED_GPUS[@]}"; do
   slot="$(pci_slot "${gpu}")"
   [[ -n "${attached_slot[${slot}]:-}" ]] && continue
   while [[ -n "${used_index[${next}]:-}" ]]; do next=$((next + 1)); done

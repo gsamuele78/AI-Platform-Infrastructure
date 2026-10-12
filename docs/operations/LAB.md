@@ -8,7 +8,7 @@ Everything that can be proven without the L40S host is proven on a developer lap
 | 2. Real OS, fake GPU | disposable Ubuntu 24.04 VM | bootstrap, deploy/rollback, backups on a mounted disk, TLS ingress, Let's Encrypt flow (against Pebble) | `make vm-test` | vagrant + vagrant-libvirt (no sudo) |
 | 3. Real GPU, small model | host Docker + one NVIDIA GPU | the production images (vLLM v0.31) serving real inference end to end through gateway and TLS ingress | `sudo make lab-gpu` | NVIDIA driver >= 580, nvidia-container-toolkit |
 
-The lab profile `release.lab.env` changes only the model and its capacity (`Qwen/Qwen2.5-0.5B-Instruct`, TP=1, 4k context). Images, gateway, UI, ingress, backups and scripts are identical to production, and so is the served alias `lifewatch-chat`.
+The lab profile `profiles/lab.env` changes only the model and its capacity (`Qwen/Qwen3.5-0.8B`, TP=1, 8k context). It is the smallest model with the production architecture (Qwen3.5 hybrid attention, `qwen3_coder` tool calls, `qwen3` reasoning), so the lab exercises the same vLLM code paths and parsers as Qwen3.8-27B. Images, gateway, UI, ingress, backups and scripts are identical to production, and so is the served alias `lifewatch-chat`.
 
 ## What the laptop cannot prove
 

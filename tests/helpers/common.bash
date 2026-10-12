@@ -35,6 +35,15 @@ as_user() { stub id 'if [[ "${1:-}" == "-u" ]]; then echo 1000; else /usr/bin/id
 called() { grep -Eq "^$1 .*$2" "${STUB_LOG}"; }
 not_called() { ! grep -Eq "^$1( |$)" "${STUB_LOG}"; }
 
+# refute CMD...: fail if CMD succeeds. Bats ignores a bare `! cmd` that is not
+# the last line of a test (set -e does not apply to negated commands).
+refute() {
+  if "$@"; then
+    printf 'expected to fail: %s\n' "$*" >&2
+    return 1
+  fi
+}
+
 assert_output_contains() {
   if [[ "${output}" != *"$1"* ]]; then
     printf 'expected output to contain: %s\n--- output ---\n%s\n' "$1" "${output}" >&2
@@ -54,4 +63,13 @@ assert_failure() {
     printf 'expected failure, got status 0\n--- output ---\n%s\n' "${output}" >&2
     return 1
   fi
+}
+
+# stub_lspci: lspci backed by $SANDBOX/lspci.out, honouring `-d VENDOR:DEVICE`
+# like the real tool (lines look like "01:00.0 0302: 10de:26b9 (rev a1)").
+stub_lspci() {
+  stub lspci '
+id=""
+while [[ $# -gt 0 ]]; do [[ "$1" == -d ]] && id=$2; shift; done
+if [[ -n "$id" ]]; then grep " ${id} " "$SANDBOX/lspci.out" || true; else cat "$SANDBOX/lspci.out"; fi'
 }
