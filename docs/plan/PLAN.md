@@ -42,13 +42,13 @@ Order: `P0 → P1 → P2 → P3 → P4 → P5/P5b → DEC-008 → P6 → P7 → 
 - **Measure:** CI jobs green 2/4 → 4/4. Destructive commands without confirmation for an agent: all → 0. Secret globs readable: all → 0.
 - **Rollback:** `git revert`.
 
-### P1. Supply chain: Dependabot, Trivy, limits *(cloud-runnable)*: **partly done** (Dependabot, Trivy report; `cpus` limits and yamllint still open)
+### P1. Supply chain: Dependabot, Trivy, limits *(cloud-runnable)*: **done** except yamllint (Dependabot, Trivy report, `cpus` limits with vLLM exempt)
 
 - **Deliverables:** `.github/dependabot.yml` (docker-compose, github-actions; cooldown 7 days; `postgres` major ignored; one group for minor/patch; vLLM excluded from grouping because every bump is a maintenance window); `security-scan.yml` with gitleaks on the PR range plus weekly full history, Trivy config (blocking HIGH/CRITICAL) and Trivy images (report-only, counts in the job summary, as Infra-Iam-PKI); `cpus` limits on gateway, UI, DB and ingress (HC-01; vLLM exempt with the reason written down); yamllint on compose, configs and workflows.
 - **Acceptance:** the first Dependabot PR opens and its CI runs; the Trivy summary lists all 6 images; a policy test requires `cpus` and `memory` on the four services.
 - **Measure:** pins tracked by a bot 0/8 (6 images + actions + Makefile tools) → ≥ 7/8. Images with a weekly CVE count 0/6 → 6/6. Services with both limits 0/4 → 4/4.
 
-### P2. Mutation tests for policy checks *(cloud-runnable)*
+### P2. Mutation tests for policy checks *(cloud-runnable)*: **done** (`make mutation`, CI job; the internal-names check is still open)
 
 - **Deliverables:** `tests/mutation/` with a catalogue (`catalog.tsv`: check, file, mutation) and a runner that applies each mutation to a temporary copy and expects the matching test to fail. Covers every rule in `policy.bats`, preflight secret checks, and the new P0/P3 checks. Adds the "no internal names in committed files" check (assumption 4).
 - **Acceptance:** every catalogued mutation turns its test red, and the runner fails if a mutation survives.
@@ -71,7 +71,7 @@ Order: `P0 → P1 → P2 → P3 → P4 → P5/P5b → DEC-008 → P6 → P7 → 
 - **Acceptance:** fixtures map to the expected profile; unknown hardware refuses; passthrough of a subset is idempotent and rolls back by manifest (existing ADR-009 guarantees hold for a subset).
 - **Measure:** correct decisions on fixtures → 100 %. Deploys possible on unvalidated hardware: yes → no (mutation-tested). Detection time < 2 s (`hyperfine`, median of 10).
 
-### P5. Model selection and capacity on the L40S host *(needs the host, two windows)*
+### P5. Model selection and capacity on the L40S host *(needs the host, two windows)*: **harness ready** ([bench/](../../bench/README.md): load, eval, report, pre-registered `gates.json`, tested); waiting on the host and on the research golden set
 
 - **Deliverables:** `bench/` with
   - **golden set** (owner + research lead): ≥ 40 research prompts with deterministic or rubric-keyed checks (extraction, citation format, R/Python code that must run, Italian and English), plus ≥ 20 agent tasks with tool calls checked by JSON schema;
@@ -148,6 +148,10 @@ Order: `P0 → P1 → P2 → P3 → P4 → P5/P5b → DEC-008 → P6 → P7 → 
 | 2026-10-12 | P3 | limit and budget enforcement tests | 0 | 2 unit (payload, validation) + integration step 3b (429, spend > 0) not yet run | — | pending CI |
 | 2026-10-12 | P4 | correct profile decisions on fixtures (0, 1, 2, 3 L40S; other GPU; override; explicit file) | — | 7/7 | 1 | ✔ |
 | 2026-10-12 | P4 | host passthrough: 1 or 2 GPUs, subset, owner conflict (tests) | 2-GPU only | 1, 2 or a subset; card owned by another VM refused; 2 mutations caught | 1 | ✔ |
+| 2026-10-12 | P1 | services with cpu and memory limits | 0/4 | 4/4 (vLLM exempt, reason in compose.yaml) | static | ✔ |
+| 2026-10-12 | P2 | policy checks with a mutation case / surviving mutations | 0 / — | 33 mutations, 33 killed; first run found 2 gaps (no test for `turn_off_message_logging`, tool smoke test accepted `tool_choice: none`), both closed | 3 | ✔ |
+| 2026-10-12 | P2 | `make mutation` runtime | — | 10 s | 1 | ✔ (no guard set) |
+| 2026-10-12 | P5 | harness: gate correct on synthetic pass/fail cases; golden tasks valid | — | 4/4 gate cases, 20 seed tasks (10 agent, 10 science) | 1 | ✔ (research set still missing) |
 | 2026-10-12 | all | bats tests / runtime | 135 / 51 s | 168 / 62 s | 1 | ✔ (guard: runtime ≤ +30 %: +22 %) |
 
 ## 5. Risks

@@ -1,0 +1,9 @@
+{
+  "_comment": "Pre-registered P5 gate (ADR-013, MODEL_SELECTION.md section 6). Change only by PR, before results are seen.",
+  "quality_max_drop_pp": 2,
+  "latency_level": 8,
+  "ttft_max_increase_pct": 20,
+  "ttft_abs_max_ms": 3000,
+  "throughput_level": 32,
+  "throughput_max_drop_pct": 10
+}

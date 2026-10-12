@@ -30,6 +30,9 @@ services:
       - ${MODEL_CACHE_DIR:?}:/root/.cache/huggingface:ro
     shm_size: 16gb
     security_opt: ["no-new-privileges:true"]
+    # No cpus/memory limit (HC-01 exception): vLLM owns the VM and its peak
+    # host memory while loading weights depends on the model; a guessed limit
+    # kills it mid-load. The other services are capped so they cannot starve it.
     deploy:
       resources:
         reservations:
@@ -90,6 +93,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "4"
           memory: 4g
           pids: 512
     healthcheck:
@@ -153,6 +157,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "4"
           memory: 8g
           pids: 1024
     healthcheck:
@@ -196,6 +201,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1"
           memory: 512m
           pids: 256
     healthcheck:
@@ -239,6 +245,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "2"
           memory: 2g
           pids: 256
     healthcheck:

@@ -33,12 +33,14 @@ Proxmox host ── vfio-pci ──► VM: nginx :443 (UI) / :8443 (/v1 only)
 | 8 | Deploy refuses uncommitted changes, backs up before any change, rolls back automatically on failed health or smoke test | `tests/deploy/*.bats` |
 | 9 | No secrets in git: `.env` is mode 600 and never committed; `.env.example` holds `CHANGE_ME` only | `make secrets`, `preflight.sh` |
 | 10 | Prompts and responses are never logged (vLLM default, LiteLLM `turn_off_message_logging`) | `policy.bats` |
+| 11a | Every policy check has a mutation case in `tests/mutation/catalog.tsv`, and none survives | `make mutation` |
 | 11 | The repository is public: no internal host names, IP addresses or user names in committed files | review (PLAN P2 adds a check) |
 
 ## Commands
 
 ```bash
 make lint test        # shellcheck + bats (stubbed hardware); no Docker daemon, no GPU
+make mutation         # each catalogued rule broken in a copy must turn its test red
 make integration      # real gateway/UI/DB, fake GPU backend; needs Docker
 make vm-test          # disposable Ubuntu 24.04 VM (vagrant-libvirt)
 sudo make lab-gpu     # real vLLM on one local NVIDIA GPU, small model (profiles/lab.env)

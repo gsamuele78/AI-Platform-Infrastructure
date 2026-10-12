@@ -120,7 +120,7 @@ case "$url" in
     elif [[ "$auth" != "$STUB_MASTER_KEY" ]]; then code 401 '{"error":"bad key"}' badkey
     elif [[ "$data" == *'"tools"'* && ! -f "$SANDBOX/no-tools" ]]; then
       code 200 '{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"get_utc_time","arguments":"{}"}}]}}]}' tools
-    elif [[ "$data" == *'"tools"'* ]]; then code 400 '{"error":"auto tool choice requires --enable-auto-tool-choice"}' tools
+    elif [[ "$data" == *'"tool_choice":"auto"'* ]]; then code 400 '{"error":"auto tool choice requires --enable-auto-tool-choice"}' tools
     else code 200 '{"choices":[{"message":{"content":"o"}}]}' inference; fi ;;
   */key/generate) printf "%s" "$data" >"$SANDBOX/keygen.payload"; code 200 '{"key":"sk-generated-virtual-key"}' keygen ;;
   *) printf '000'; exit 7 ;;

@@ -101,6 +101,11 @@ q() { jq -r "$@" "${RENDERED}"; }
   [[ -n "$(q '.services["vllm-backend"].environment.VLLM_API_KEY // empty')" ]]
 }
 
+@test "the gateway keeps prompt and response bodies out of its logs and callbacks" {
+  [[ "$(yq -r '.litellm_settings.turn_off_message_logging' "${REPO_ROOT}/configs/proxy/config.yaml")" == true ]]
+  [[ "$(yq -r '.litellm_settings.set_verbose' "${REPO_ROOT}/configs/proxy/config.yaml")" == false ]]
+}
+
 @test "the gateway starts independently of model load" {
   [[ "$(q '.services["litellm-gateway"].depends_on | has("vllm-backend")')" == false ]]
 }
@@ -123,6 +128,12 @@ q() { jq -r "$@" "${RENDERED}"; }
   [[ "$(q "${env}.DEFAULT_USER_ROLE")" == pending ]]
   [[ "$(q "${env}.ENABLE_OAUTH_GROUP_MANAGEMENT")" == true ]]
   [[ "$(q "${env}.ENABLE_OAUTH_GROUP_CREATION")" == false ]]
+}
+
+@test "every service except vLLM has cpu and memory limits (HC-01)" {
+  run q '.services | to_entries[] | select(.key != "vllm-backend" and .key != "certbot")
+    | select(.value.deploy.resources.limits.cpus == null or .value.deploy.resources.limits.memory == null) | .key'
+  [[ -z "${output}" ]] || { echo "unbounded: ${output}"; false; }
 }
 
 @test "the gateway prices tokens, so key budgets can trip (R3-03)" {

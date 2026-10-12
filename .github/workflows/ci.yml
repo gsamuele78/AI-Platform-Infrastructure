@@ -31,6 +31,16 @@ jobs:
       - run: sudo apt-get update -q && sudo apt-get install -y -q bats
       - run: make test
 
+  mutation:
+    name: Mutation tests (every policy check can fail)
+    needs: [unit]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - run: sudo apt-get update -q && sudo apt-get install -y -q bats
+      - run: make mutation
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-24.04
