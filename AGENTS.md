@@ -69,6 +69,7 @@ sudo make lab-gpu     # real vLLM on one local NVIDIA GPU, small model (profiles
 | Compose versions report different missing variables first (R3-01) | CI red on a newer runner | leave exactly one variable missing in the test |
 | vLLM tool calling is off by default (R3-02) | agents get errors on `tool_choice: auto` | `--enable-auto-tool-choice --tool-call-parser <profile parser>` |
 | Bare `! cmd` in a bats test | the assertion never runs | `refute cmd` |
+| Integration test run as an unprivileged user | nginx crash-loops: `Permission denied` on `fullchain.pem` (ingress has `cap_drop: ALL`, no `DAC_OVERRIDE`) | run it as root, like production (`sudo make integration`; CI does) |
 | Host Docker daemon on the maintainer's workstation | breaks the libvirt lab | keep it off; `docker compose config` works without the daemon |
 
 ## Out of scope here
