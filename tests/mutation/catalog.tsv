@@ -1,0 +1,35 @@
+# id	file	sed -E expression (breaks one rule)	bats file	test name filter
+# Every policy check must fail when the rule it guards is broken (PLAN P2).
+digest-pin	compose.yaml	s#(image: nginx:1.30-alpine)@sha256:[0-9a-f]+#\1#	tests/compose/policy.bats	pinned by digest
+latest-tag	compose.yaml	s#image: postgres:16-alpine@sha256:[0-9a-f]+#image: postgres:latest#	tests/compose/policy.bats	pinned by digest
+gateway-public	compose.yaml	s#"127.0.0.1:4000:4000"#"4000:4000"#	tests/compose/policy.bats	only the TLS ingress publishes
+backend-not-internal	compose.yaml	s#internal: true#internal: false#	tests/compose/policy.bats	only reachable on the internal network
+host-ipc	compose.yaml	s#^(    shm_size: 16gb)#\1\n    ipc: host#	tests/compose/policy.bats	host namespaces
+no-new-priv	compose.yaml	0,/no-new-privileges:true/s##no-new-privileges:false#	tests/compose/policy.bats	no-new-privileges
+cpu-limit	compose.yaml	0,/cpus: "4"/{/cpus: "4"/d}	tests/compose/policy.bats	HC-01
+trust-remote-code	compose.yaml	s#(      - --port=8000)#      - --trust-remote-code\n\1#	tests/compose/policy.bats	runs offline
+hf-online	compose.yaml	s#HF_HUB_OFFLINE: "1"#HF_HUB_OFFLINE: "0"#	tests/compose/policy.bats	runs offline
+tool-choice-off	compose.yaml	/--enable-auto-tool-choice/d	tests/compose/policy.bats	tool calling
+models-in-db	compose.yaml	s#STORE_MODEL_IN_DB: "False"#STORE_MODEL_IN_DB: "True"#	tests/compose/policy.bats	GitOps-only
+signup-open	compose.yaml	s#WEBUI_ENABLE_SIGNUP:-false#WEBUI_ENABLE_SIGNUP:-true#	tests/compose/policy.bats	real OAuth variable
+role-mgmt-off	compose.yaml	s#ENABLE_OAUTH_ROLE_MANAGEMENT: "true"#ENABLE_OAUTH_ROLE_MANAGEMENT: "false"#	tests/compose/policy.bats	roles and groups from Keycloak
+group-creation	compose.yaml	s#ENABLE_OAUTH_GROUP_CREATION: "false"#ENABLE_OAUTH_GROUP_CREATION: "true"#	tests/compose/policy.bats	roles and groups from Keycloak
+default-role	compose.yaml	s#DEFAULT_USER_ROLE: pending#DEFAULT_USER_ROLE: user#	tests/compose/policy.bats	roles and groups from Keycloak
+no-price	configs/proxy/config.yaml	/input_cost_per_token/d	tests/compose/policy.bats	prices tokens
+message-logging	configs/proxy/config.yaml	s#turn_off_message_logging: true#turn_off_message_logging: false#	tests/compose/policy.bats	response bodies out
+redis-routing	configs/proxy/config.yaml	s#simple-shuffle#usage-based-routing-v2#	tests/compose/policy.bats	GitOps-only
+old-tls	configs/ingress/templates/lifewatch.conf.template	s#ssl_protocols TLSv1.2 TLSv1.3;#ssl_protocols TLSv1 TLSv1.2 TLSv1.3;#	tests/compose/policy.bats	modern TLS only
+short-context	profiles/l40s-1.env	s#^VLLM_MAX_MODEL_LEN=.*#VLLM_MAX_MODEL_LEN=16384#	tests/compose/policy.bats	64k context
+unknown-parser	profiles/l40s-2.env	s#^VLLM_TOOL_CALL_PARSER=.*#VLLM_TOOL_CALL_PARSER=qwen9#	tests/compose/policy.bats	tool calling
+floating-revision	profiles/l40s-1.env	s#^MODEL_REVISION=.*#MODEL_REVISION=main#	tests/compose/policy.bats	pins its model
+gpu-mismatch	profiles/l40s-2.env	s#^VLLM_TENSOR_PARALLEL_SIZE=2#VLLM_TENSOR_PARALLEL_SIZE=1#	tests/compose/policy.bats	pins its model
+alias-drift	profiles/lab.env	s#^SERVED_MODEL_NAME=.*#SERVED_MODEL_NAME=qwen-small#	tests/compose/policy.bats	exactly the model alias
+real-secret	.env.example	s#^POSTGRES_PASSWORD=.*#POSTGRES_PASSWORD=Sup3rS3cret#	tests/compose/policy.bats	placeholders
+agent-reads-env	.claude/settings.json	/"Read\(\.\/\.env\)",/d	tests/compose/agent-guardrails.bats	secret locations
+agent-no-ask-apply	.claude/settings.json	/"Bash\(\*--apply\*\)",/d	tests/compose/agent-guardrails.bats	require confirmation
+detect-any-gpu	scripts/lib/profile.sh	s#lspci -n -d "\$\{LW_GPU_PCI_ID\}"#lspci -n#	tests/vm/profile.bats	other GPU models
+unvalidated-ok	scripts/deploy/preflight.sh	s#validated \| lab\)#validated | lab | candidate)#	tests/vm/profile.bats	refuses a candidate
+gpu-owner	scripts/pve/configure-passthrough.sh	s#\[\[ -z "\$\{owners\}" \]\] \|\| die#true || die#	tests/pve/configure-passthrough.bats	already passes through
+tool-smoke	scripts/deploy/smoke-test.sh	s#tool_choice: "auto"\}#tool_choice: "none"}#	tests/deploy/smoke-test.bats	rejects tool_choice
+key-limit	scripts/ops/issue-key.sh	s#\{max_parallel_requests: #{max_parallel: #	tests/vm/vm-scripts.bats	per-key rate
+verbose-gateway	configs/proxy/config.yaml	s#set_verbose: false#set_verbose: true#	tests/compose/policy.bats	response bodies out
