@@ -7,7 +7,7 @@ GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79
 SCRIPTS := $(wildcard scripts/*/*.sh) tests/integration/run.sh tests/mutation/run.sh bench/load.sh $(wildcard tests/lab/*.sh)
 COMPOSE_CI := docker compose --env-file profiles/l40s-2.env --env-file .env.example
 
-.PHONY: help lint test mutation integration secrets ci vm-test vm-destroy lab-gpu preflight deploy rollback backup
+.PHONY: help lint test mutation integration secrets ci vm-test vm-destroy lab-check lab-setup lab-gpu preflight deploy rollback backup
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -39,7 +39,13 @@ vm-test: ## Real Ubuntu 24.04 VM (vagrant-libvirt): bootstrap twice, then lint/t
 	  vagrant box add --name '$(VM_BOX)' "$$tmp"; rm -f "$$tmp"; fi
 	cd tests/vagrant && vagrant up --provision-with backup-disk,bootstrap && vagrant rsync && vagrant provision --provision-with test
 
-lab-gpu: ## Real vLLM on ONE local NVIDIA GPU with the lab model, rootless Podman by default (docs/operations/LAB.md)
+lab-check: ## Laptop lab prerequisites in phases, read-only (GPU, toolkit, CDI, LAB_DIR, disk, ports)
+	bash tests/lab/setup.sh
+
+lab-setup: ## (sudo) Fix lab prerequisites idempotently: toolkit, CDI spec, LAB_DIR
+	bash tests/lab/setup.sh --apply
+
+lab-gpu: ## Real vLLM on ONE local NVIDIA GPU with the lab model, rootless Podman, run WITHOUT sudo (docs/operations/LAB.md)
 	bash tests/lab/run-gpu.sh $(if $(KEEP),--keep,)
 
 vm-destroy: ## Delete the test VM

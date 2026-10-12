@@ -43,7 +43,8 @@ make lint test        # shellcheck + bats (stubbed hardware); no Docker daemon, 
 make mutation         # each catalogued rule broken in a copy must turn its test red
 make integration      # real gateway/UI/DB, fake GPU backend; needs Docker
 make vm-test          # disposable Ubuntu 24.04 VM (vagrant-libvirt)
-sudo make lab-gpu     # real vLLM on one local NVIDIA GPU, small model (profiles/lab.env)
+make lab-check        # lab prerequisites in phases (sudo make lab-setup fixes them)
+make lab-gpu          # real vLLM on one local NVIDIA GPU, small model (profiles/lab.env); never with sudo
 # GPU profile: the guest counts L40S on its PCI bus -> profiles/l40s-1.env or l40s-2.env
 # (override: LW_PROFILE=l40s-1). New profiles start as PROFILE_STATUS=candidate.
 # host (Proxmox) and guest (VM) procedures: docs/operations/PROXMOX_PASSTHROUGH.md, RUNBOOK.md
@@ -71,6 +72,8 @@ sudo make lab-gpu     # real vLLM on one local NVIDIA GPU, small model (profiles
 | Compose versions report different missing variables first (R3-01) | CI red on a newer runner | leave exactly one variable missing in the test |
 | vLLM tool calling is off by default (R3-02) | agents get errors on `tool_choice: auto` | `--enable-auto-tool-choice --tool-call-parser <profile parser>` |
 | Bare `! cmd` in a bats test | the assertion never runs | `refute cmd` |
+| `sudo make lab-gpu` | `LAB_DIR … must exist`, no runtime dir: the lab is rootless Podman | `make lab-check`, `sudo make lab-setup`, then `make lab-gpu` without sudo |
+| Podman pulls staged in `$XDG_RUNTIME_DIR` | "no space left" on a multi-GB vLLM layer (RAM disk) | the lab service stages in `LAB_DIR/tmp` |
 | Integration test run as an unprivileged user | nginx crash-loops: `Permission denied` on `fullchain.pem` (ingress has `cap_drop: ALL`, no `DAC_OVERRIDE`) | run it as root, like production (`sudo make integration`; CI does) |
 | Host Docker daemon on the maintainer's workstation | breaks the libvirt lab | keep it off; `docker compose config` works without the daemon |
 

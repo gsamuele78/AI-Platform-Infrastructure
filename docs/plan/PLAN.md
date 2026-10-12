@@ -2,7 +2,7 @@
 
 | | |
 | :-- | :-- |
-| **Status** | 2026-10-12: P0, P1 and the code parts of P3, P4 and P8 are implemented in the working tree, with 168 bats tests passing locally. Integration, VM and lab runs are pending: CI, `make vm-test` and `make lab-gpu` were not run here, because the maintainer's host keeps its Docker daemon off. P2 and P5-P11 are open. Replaces the "remaining items" scattered across the [audit](../audit/PRODUCTION_READINESS_AUDIT.md) and [DECISIONS_REQUIRED](../DECISIONS_REQUIRED.md); those files stay the record of what was found and decided. |
+| **Status** | 2026-10-12: P0, P1, P2, P4 and the code parts of P3 and P8 are merged (PR #1, #3), with integration green in CI. The P5 harness is ready. Lab run pending: the laptop lacks the NVIDIA Container Toolkit, the CDI spec and ~11 GB of disk (`make lab-check`). P5-P11 open; P6, P7 and P10 are on hold until the infrastructure is ready. Replaces the "remaining items" scattered across the [audit](../audit/PRODUCTION_READINESS_AUDIT.md) and [DECISIONS_REQUIRED](../DECISIONS_REQUIRED.md); those files stay the record of what was found and decided. |
 | **Inputs** | [PRACTICES_EVALUATION.md](PRACTICES_EVALUATION.md) (sources, findings R3-01…R3-11, what to import) · [MODEL_SELECTION.md](MODEL_SELECTION.md) (models for one and two L40S) |
 | **ADRs** | [012](../adr/ADR-012-gpu-profiles-from-hardware-detection.md) GPU profiles · [013](../adr/ADR-013-measure-before-adopting.md) measure before adopting · [014](../adr/ADR-014-agent-client-contract.md) agent client contract · [015](../adr/ADR-015-second-gpu-allocation-by-benchmark.md) second GPU by benchmark |
 | **Cloud** | [CLOUD_DEVELOPMENT_PLAN.md](CLOUD_DEVELOPMENT_PLAN.md) (which packages can run in Claude Code cloud sessions) |
@@ -62,7 +62,7 @@ Order: `P0 → P1 → P2 → P3 → P4 → P5/P5b → DEC-008 → P6 → P7 → 
   - integration: the fake backend learns tool calls; tests for a tool-call round trip, 429 on `rpm_limit` and `max_parallel_requests`, and budget behaviour (C7);
   - check whether vLLM v0.31.0 accepts a per-request `cache_salt` and whether LiteLLM can set it per key (C4). Record the result; implement only if both exist;
   - ADR-014 contract published in the PRD.
-- **Acceptance:** integration green with the new tests; the lab (`make lab-gpu`, Qwen2.5-0.5B with `hermes`) completes a real tool call.
+- **Acceptance:** integration green with the new tests; the lab (`make lab-gpu`, Qwen3.5-0.8B with `qwen3_coder`) completes a real tool call.
 - **Measure:** schema-valid tool calls in the lab, 50 requests: 0 % → ≥ 95 % (this proves the plumbing, not model quality). Limit enforcement tests: 0 → 3.
 
 ### P4. Hardware-detected profiles (ADR-012) *(cloud-runnable on fixtures)*: **done** (detection time not measured yet)
@@ -152,6 +152,7 @@ Order: `P0 → P1 → P2 → P3 → P4 → P5/P5b → DEC-008 → P6 → P7 → 
 | 2026-10-12 | P2 | policy checks with a mutation case / surviving mutations | 0 / — | 33 mutations, 33 killed; first run found 2 gaps (no test for `turn_off_message_logging`, tool smoke test accepted `tool_choice: none`), both closed | 3 | ✔ |
 | 2026-10-12 | P2 | `make mutation` runtime | — | 10 s | 1 | ✔ (no guard set) |
 | 2026-10-12 | P5 | harness: gate correct on synthetic pass/fail cases; golden tasks valid | — | 4/4 gate cases, 20 seed tasks (10 agent, 10 science) | 1 | ✔ (research set still missing) |
+| 2026-10-12 | lab | prerequisites reported per run of the lab | first one only (stopped at `LAB_DIR`) | all 8 phases, every problem listed (this laptop: 4: toolkit, CDI, LAB_DIR, disk 19/30 GB) | 1 | ✔ |
 | 2026-10-12 | all | bats tests / runtime | 135 / 51 s | 168 / 62 s | 1 | ✔ (guard: runtime ≤ +30 %: +22 %) |
 
 ## 5. Risks

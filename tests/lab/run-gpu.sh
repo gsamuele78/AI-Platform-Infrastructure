@@ -7,7 +7,8 @@
 # under LAB_DIR, see podman-service.sh; your normal Podman is not touched), or
 # the Docker daemon with LW_LAB_ENGINE=docker.
 # --keep leaves the stack running: https://localhost:8444 (CA: LAB_DIR/tls/live/ca.pem)
-# Prerequisites: driver >= 580, CDI spec for Podman, LAB_DIR (docs/operations/LAB.md).
+# Prerequisites are checked first (tests/lab/setup.sh); fix them once with
+# `sudo make lab-setup`, then run this WITHOUT sudo (docs/operations/LAB.md).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -15,15 +16,19 @@ KEEP=false
 [[ "${1:-}" == --keep ]] && KEEP=true
 
 export LAB_DIR="${LAB_DIR:-/srv/lifewatch-lab}"
-[[ -d "${LAB_DIR}" && -w "${LAB_DIR}" ]] || {
-  echo "LAB_DIR ${LAB_DIR} must exist and be writable: sudo install -d -o $(id -un) -g $(id -gn) ${LAB_DIR}" >&2
+ENGINE="${LW_LAB_ENGINE:-podman}"
+if [[ "${ENGINE}" == podman && "$(id -u)" -eq 0 ]]; then
+  echo "The lab runs rootless: run 'make lab-gpu' WITHOUT sudo (one-time root setup: sudo make lab-setup)" >&2
+  exit 2
+fi
+
+printf '\n=== [0/7] Prerequisites (tests/lab/setup.sh)\n' >&2
+bash "${REPO}/tests/lab/setup.sh" || {
+  echo "Prerequisites missing: see the list above. Fix with: sudo make lab-setup (then run make lab-gpu again)" >&2
   exit 1
 }
-ENGINE="${LW_LAB_ENGINE:-podman}"
 case "${ENGINE}" in
   podman)
-    [[ -f /etc/cdi/nvidia.yaml || -f /var/run/cdi/nvidia.yaml ]] ||
-      { echo "No NVIDIA CDI spec: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml" >&2; exit 1; }
     bash "${REPO}/tests/lab/podman-service.sh" start
     eval "$(bash "${REPO}/tests/lab/podman-service.sh" env)"
     export LW_COMPOSE_OVERRIDES=tests/lab/compose.podman-gpu.yaml
@@ -45,7 +50,8 @@ mkdir -p "${LAB_DIR}/backups" "${LAB_DIR}/vllm_cache"
 chmod 0700 "${LAB_DIR}"
 API="https://localhost:$(grep '^INGRESS_API_PORT=' "${LW_ENV_FILE}" | cut -d= -f2)"
 
-step() { printf '\n=== %s\n' "$*" >&2; }
+STEP=0
+step() { STEP=$((STEP + 1)); printf '\n=== [%d/7] %s (%s)\n' "${STEP}" "$*" "$(date +%H:%M:%S)" >&2; }
 current() { basename "$(readlink -f "${LW_STATE_DIR}/releases/current")"; }
 
 teardown() {
@@ -68,27 +74,27 @@ teardown() {
 }
 trap teardown EXIT
 
-step "1. GPU visible on the host and inside containers (CUDA 13 image = driver new enough)"
+step "GPU visible on the host and inside containers (CUDA 13 image = driver new enough)"
 LW_EXPECTED_GPUS=1 LW_MIN_GPU_MIB=4000 bash "${REPO}/scripts/verify/vm-check.sh"
 
-step "2. Stage the lab model at its pinned revision (~1 GB, cached in LAB_DIR across runs)"
+step "Stage the lab model at its pinned revision (1.75 GB, cached in LAB_DIR across runs)"
 LW_MIN_FREE_GB=5 bash "${REPO}/scripts/vm/fetch-model.sh"
 
-step "3. TLS phase 1 (self-signed lab CA, reused across runs)"
+step "TLS phase 1 (self-signed lab CA, reused across runs)"
 bash "${REPO}/scripts/ops/tls-selfsigned.sh"
 
-step "4. Deploy with real vLLM; the smoke test includes end-to-end inference"
+step "Deploy with real vLLM; the smoke test includes end-to-end inference"
 bash "${REPO}/scripts/deploy/deploy.sh" --allow-dirty
 FIRST="$(current)"
 
-step "5. A real completion through the TLS ingress"
+step "A real completion through the TLS ingress"
 master="$(grep '^LITELLM_MASTER_KEY=' "${LW_ENV_FILE}" | cut -d= -f2)"
 curl -sS --fail --cacert "${LAB_DIR}/tls/live/ca.pem" "${API}/v1/chat/completions" \
   -H "Authorization: Bearer ${master}" -H 'Content-Type: application/json' \
   -d '{"model":"lifewatch-chat","max_tokens":40,"messages":[{"role":"user","content":"Name one European research infrastructure for biodiversity."}]}' |
   jq -r '.choices[0].message.content' >&2
 
-step "6. Scoped key for Open WebUI, redeploy (pre-deploy backup), rollback"
+step "Scoped key for Open WebUI, redeploy (pre-deploy backup), rollback"
 key="$(bash "${REPO}/scripts/ops/issue-key.sh" --alias open-webui)"
 sed -i "s|^OPENWEBUI_API_KEY=.*|OPENWEBUI_API_KEY=${key}|" "${LW_ENV_FILE}"
 sleep 1
@@ -97,8 +103,8 @@ bash "${REPO}/scripts/deploy/deploy.sh" --allow-dirty
 bash "${REPO}/scripts/deploy/rollback.sh" --previous --no-restore --yes
 [[ "$(current)" == "${FIRST}" ]]
 
-step "7. vLLM capacity report (record it in the release notes)"
+step "vLLM capacity report (record it in the release notes)"
 docker compose -p "${LW_PROJECT}" logs --no-color vllm-backend 2>&1 |
   grep -Ei 'KV cache|Maximum concurrency|model weights took|memory' | tail -6 >&2 || true
 
-step "Lab GPU acceptance passed"
+printf '\n=== Lab GPU acceptance passed (%s)\n' "$(date +%H:%M:%S)" >&2
