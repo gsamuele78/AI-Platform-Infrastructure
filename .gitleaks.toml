@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented CHANGE_ME placeholders and throwaway test fixtures"
+paths = [
+  '''^\.env\.example$''',
+  '''^tests/integration/ci\.env$''',
+  '''^tests/helpers/.*\.bash$''',
+  '''^tests/.*\.bats$''',
+]

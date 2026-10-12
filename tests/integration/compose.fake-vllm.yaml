@@ -1,0 +1,16 @@
+# CI-only override: replaces the GPU vLLM backend with tests/integration/fake_vllm.py.
+# Everything else (LiteLLM, Open WebUI, Postgres, networks, hardening) is the
+# production definition, unchanged.
+services:
+  vllm-backend:
+    image: python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+    command: !override ["python3", "/fake/fake_vllm.py"]
+    environment:
+      SERVED_MODEL_NAME: ${SERVED_MODEL_NAME}
+    volumes: !override
+      - ./tests/integration/fake_vllm.py:/fake/fake_vllm.py:ro
+    shm_size: !reset null
+    deploy: !reset {}
+    healthcheck:
+      start_period: 5s
+      interval: 3s

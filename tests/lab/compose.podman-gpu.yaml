@@ -1,0 +1,12 @@
+# Lab-only override for Podman: its Docker-compatible API ignores GPU requests
+# with `driver: nvidia` (the container would start without a GPU) and honours
+# only CDI requests. Requires /etc/cdi/nvidia.yaml (nvidia-ctk cdi generate).
+services:
+  vllm-backend:
+    deploy:
+      resources:
+        reservations:
+          devices: !override
+            - driver: cdi
+              device_ids: ["nvidia.com/gpu=all"]
+              capabilities: [gpu]

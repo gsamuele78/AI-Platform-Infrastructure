@@ -1,0 +1,102 @@
+# Rendered by the nginx image's entrypoint: envsubst replaces only variables
+# present in the container environment (PUBLIC_HOSTNAME, PUBLIC_HTTPS_AUTHORITY,
+# NGINX_LOCAL_RESOLVERS); nginx's own $variables are left alone.
+# TLS policy: Mozilla "intermediate" (TLS 1.2 + 1.3).
+
+server_tokens off;
+
+ssl_certificate     /etc/nginx/tls/fullchain.pem;
+ssl_certificate_key /etc/nginx/tls/privkey.pem;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+ssl_prefer_server_ciphers off;
+ssl_session_timeout 1d;
+ssl_session_cache shared:TLS:10m;
+ssl_session_tickets off;
+
+# Resolve upstreams at request time through the container engine's DNS (taken
+# from /etc/resolv.conf: 127.0.0.11 on Docker, aardvark-dns on Podman), so nginx
+# starts while a backend is down and follows containers that were recreated.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Port 80: ACME HTTP-01 challenges and a redirect, nothing else.
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/acme;
+        default_type text/plain;
+    }
+
+    location / {
+        return 301 https://${PUBLIC_HTTPS_AUTHORITY}$request_uri;
+    }
+}
+
+# Port 443: Open WebUI.
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name ${PUBLIC_HOSTNAME};
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    client_max_body_size 100m;
+
+    location / {
+        set $webui http://open-webui:8080;
+        proxy_pass $webui;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+    }
+}
+
+# Port 8443: the OpenAI-compatible API for programmatic clients. Only /v1/* is
+# exposed; LiteLLM's admin UI and key/user management stay on 127.0.0.1:4000.
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name ${PUBLIC_HOSTNAME};
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    client_max_body_size 20m;
+
+    location /v1/ {
+        set $gateway http://litellm-gateway:4000;
+        proxy_pass $gateway;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+    }
+
+    location / {
+        return 404;
+    }
+}

@@ -1,0 +1,9 @@
+# CI-only: a release whose gateway never becomes healthy, to prove that
+# deploy.sh rolls back automatically.
+services:
+  litellm-gateway:
+    healthcheck:
+      test: ["CMD", "false"]
+      interval: 2s
+      retries: 2
+      start_period: 1s

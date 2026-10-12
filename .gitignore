@@ -1,0 +1,31 @@
+# Environment & Secrets
+.env
+*.env
+!release.env
+!release.lab.env
+!tests/lab/*.env
+!tests/integration/*.env
+*.pem
+*.key
+*.crt
+
+# Model Caches & Persistent State
+/data/
+/cache/
+*.bin
+*.pt
+*.safetensors
+*.gguf
+
+# Operational Logs & Run Artifacts
+*.log
+/logs/
+/backups/
+
+# IDE & OS Artifacts
+.DS_Store
+.idea/
+.vscode/
+
+# Vagrant state
+.vagrant/

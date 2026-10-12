@@ -1,0 +1,48 @@
+# Disposable Ubuntu 24.04 guest for tests that need a real OS and Docker
+# daemon but no GPU:
+#   - runs scripts/vm/bootstrap.sh for real, twice (the second run proves idempotency)
+#   - gives backups a separate virtual disk mounted at /srv/lifewatch-backups,
+#     like production (the test sets BACKUP_REQUIRE_MOUNT=true)
+#   - runs make lint/test/integration against real containers
+# Usage: make vm-test        (needs vagrant + vagrant-libvirt, no sudo)
+#        make vm-destroy
+Vagrant.configure("2") do |config|
+  # Added by `make vm-test` from the amd64 URL: older Vagrant releases pick the
+  # first libvirt provider of this multi-arch box, which is arm64.
+  config.vm.box = "cloud-image/ubuntu-24.04-amd64"
+  config.vm.hostname = "lifewatch-ci"
+  config.vm.synced_folder "../..", "/srv/lifewatch", type: "rsync",
+    rsync__exclude: [".serena/", ".codegraph", "tests/vagrant/.vagrant/"]
+
+  config.vm.provider :libvirt do |lv|
+    lv.memory = 8192
+    lv.cpus = 4
+    lv.machine_virtual_size = 60
+    lv.storage :file, size: "8G", device: "vdb"
+  end
+
+  config.vm.provision "backup-disk", type: "shell", inline: <<~SH
+    set -euo pipefail
+    mountpoint -q /srv/lifewatch-backups && exit 0
+    blkid /dev/vdb >/dev/null || mkfs.ext4 -q -L lw-backups /dev/vdb
+    mkdir -p /srv/lifewatch-backups
+    grep -q 'LABEL=lw-backups' /etc/fstab || echo 'LABEL=lw-backups /srv/lifewatch-backups ext4 defaults,nofail 0 2' >>/etc/fstab
+    mount /srv/lifewatch-backups
+    chmod 0700 /srv/lifewatch-backups
+  SH
+
+  config.vm.provision "bootstrap", type: "shell", inline: <<~SH
+    set -euo pipefail
+    bash /srv/lifewatch/scripts/vm/bootstrap.sh
+    bash /srv/lifewatch/scripts/vm/bootstrap.sh
+  SH
+
+  config.vm.provision "test", type: "shell", run: "never", inline: <<~SH
+    set -euo pipefail
+    apt-get install -y -q bats make shellcheck yq
+    cd /srv/lifewatch
+    git config --global --add safe.directory /srv/lifewatch
+    export LW_TEST_BACKUP_DIR=/srv/lifewatch-backups
+    make lint test integration
+  SH
+end

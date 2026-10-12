@@ -1,0 +1,25 @@
+graph TD
+    User(["Researchers / API clients"]) -->|"HTTPS 443 UI / 8443 API"| Ingress["nginx TLS ingress"]
+    ACME(["Let's Encrypt"]) -->|"HTTP 80 /.well-known/acme-challenge"| Ingress
+    Ingress -->|"open-webui:8080"| WebUI["Open WebUI"]
+    Ingress -->|"litellm-gateway:4000, /v1 only"| Gateway["LiteLLM gateway"]
+    WebUI -->|"OIDC login"| Keycloak[("LifeWatch Keycloak")]
+    WebUI -->|"scoped virtual key"| Gateway
+    Gateway -->|"keys, spend, audit"| PG[("Postgres")]
+    Gateway -->|"backend-net (internal) + VLLM_API_KEY"| vLLM["vLLM, TP=2, offline"]
+
+    subgraph VM["Guest VM: Ubuntu 24.04 LTS"]
+        Ingress
+        WebUI
+        Gateway
+        PG
+        vLLM
+    end
+
+    subgraph HW["PCIe passthrough (vfio-pci)"]
+        GPU0["NVIDIA L40S #0, 48 GB"]
+        GPU1["NVIDIA L40S #1, 48 GB"]
+    end
+
+    vLLM --> GPU0
+    vLLM --> GPU1
