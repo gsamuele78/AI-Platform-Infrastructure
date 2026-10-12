@@ -71,7 +71,7 @@ Order: `P0 → P1 → P2 → P3 → P4 → P5/P5b → DEC-008 → P6 → P7 → 
 - **Acceptance:** fixtures map to the expected profile; unknown hardware refuses; passthrough of a subset is idempotent and rolls back by manifest (existing ADR-009 guarantees hold for a subset).
 - **Measure:** correct decisions on fixtures → 100 %. Deploys possible on unvalidated hardware: yes → no (mutation-tested). Detection time < 2 s (`hyperfine`, median of 10).
 
-### P5. Model selection and capacity on the L40S host *(needs the host, two windows)*
+### P5. Model selection and capacity on the L40S host *(needs the host, two windows)*: **harness ready** ([bench/](../../bench/README.md): load, eval, report, pre-registered `gates.json`, tested); waiting on the host and on the research golden set
 
 - **Deliverables:** `bench/` with
   - **golden set** (owner + research lead): ≥ 40 research prompts with deterministic or rubric-keyed checks (extraction, citation format, R/Python code that must run, Italian and English), plus ≥ 20 agent tasks with tool calls checked by JSON schema;
@@ -151,6 +151,7 @@ Order: `P0 → P1 → P2 → P3 → P4 → P5/P5b → DEC-008 → P6 → P7 → 
 | 2026-10-12 | P1 | services with cpu and memory limits | 0/4 | 4/4 (vLLM exempt, reason in compose.yaml) | static | ✔ |
 | 2026-10-12 | P2 | policy checks with a mutation case / surviving mutations | 0 / — | 33 mutations, 33 killed; first run found 2 gaps (no test for `turn_off_message_logging`, tool smoke test accepted `tool_choice: none`), both closed | 3 | ✔ |
 | 2026-10-12 | P2 | `make mutation` runtime | — | 10 s | 1 | ✔ (no guard set) |
+| 2026-10-12 | P5 | harness: gate correct on synthetic pass/fail cases; golden tasks valid | — | 4/4 gate cases, 20 seed tasks (10 agent, 10 science) | 1 | ✔ (research set still missing) |
 | 2026-10-12 | all | bats tests / runtime | 135 / 51 s | 168 / 62 s | 1 | ✔ (guard: runtime ≤ +30 %: +22 %) |
 
 ## 5. Risks

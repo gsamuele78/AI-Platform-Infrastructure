@@ -33,3 +33,4 @@ gpu-owner	scripts/pve/configure-passthrough.sh	s#\[\[ -z "\$\{owners\}" \]\] \|\
 tool-smoke	scripts/deploy/smoke-test.sh	s#tool_choice: "auto"\}#tool_choice: "none"}#	tests/deploy/smoke-test.bats	rejects tool_choice
 key-limit	scripts/ops/issue-key.sh	s#\{max_parallel_requests: #{max_parallel: #	tests/vm/vm-scripts.bats	per-key rate
 verbose-gateway	configs/proxy/config.yaml	s#set_verbose: false#set_verbose: true#	tests/compose/policy.bats	response bodies out
+loose-gate	bench/gates.json	s#"quality_max_drop_pp": 2#"quality_max_drop_pp": 50#	tests/bench/bench.bats	gate fails
