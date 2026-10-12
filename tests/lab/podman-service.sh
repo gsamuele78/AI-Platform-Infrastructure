@@ -22,7 +22,10 @@ case "${1:-}" in
     }
     mkdir -p "${RUN}" "${LAB_DIR}/containers/storage"
     if running; then echo "already running: unix://${SOCK}" >&2; exit 0; fi
-    nohup "${PODMAN[@]}" system service --time=0 "unix://${SOCK}" >"${RUN}/service.log" 2>&1 &
+    # Image layers are staged in TMPDIR while pulling (the vLLM image has
+    # multi-GB layers). XDG_RUNTIME_DIR is a small RAM disk: stage on LAB_DIR.
+    mkdir -p "${LAB_DIR}/tmp"
+    TMPDIR="${LAB_DIR}/tmp" nohup "${PODMAN[@]}" system service --time=0 "unix://${SOCK}" >"${RUN}/service.log" 2>&1 &
     echo $! >"${PIDFILE}"
     for _ in $(seq 1 50); do [[ -S "${SOCK}" ]] && break; sleep 0.2; done
     [[ -S "${SOCK}" ]] || { echo "podman service did not start, see ${RUN}/service.log" >&2; exit 1; }

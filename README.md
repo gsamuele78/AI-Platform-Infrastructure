@@ -42,7 +42,8 @@ make help          # all targets
 make lint test     # shellcheck + bats unit/policy tests; no Docker daemon or GPU needed
 make integration   # real gateway/UI/DB with a fake GPU backend; needs Docker
 make vm-test       # same, plus bootstrap.sh and a mounted backup disk, in a disposable Ubuntu 24.04 VM
-sudo make lab-gpu  # real vLLM inference on one local NVIDIA GPU with the lab model
+make lab-check     # laptop lab prerequisites (sudo make lab-setup fixes them)
+make lab-gpu       # real vLLM inference on one local NVIDIA GPU with the lab model (no sudo)
 sudo make deploy   # on the guest VM: see docs/operations/RUNBOOK.md
 ```
 

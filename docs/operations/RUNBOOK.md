@@ -123,7 +123,7 @@ Copy backups off the VM (DEC-006); a backup on the same disk does not survive lo
 1. Read the upstream release notes between the pinned and the target versions, in particular removed or renamed CLI flags (vLLM) and migrations (LiteLLM, Open WebUI).
 2. Resolve the digest: `docker buildx imagetools inspect <image>:<tag> --format '{{json .Manifest.Digest}}'`.
 3. Change **one** component per PR, with its digest. CI runs the policy and integration tests.
-4. Run `make vm-test` and `sudo make lab-gpu` on a laptop first: they catch removed flags, migrations that fail on a fresh database, and container hardening that breaks the new image.
+4. Run `make vm-test` and `make lab-gpu` (no sudo; `make lab-check` first) on a laptop first: they catch removed flags, migrations that fail on a fresh database, and container hardening that breaks the new image.
 5. Deploy in a maintenance window (stateful images change, so the pre-deploy backup is the rollback path), record AC-3.1, and run the representative prompt set (DEC-007).
 
 Upgrade notes from the 2026-10 jump (vLLM 0.6.3 → 0.31.0, LiteLLM 1.52 → 1.104.2, Open WebUI 0.3.30 → 0.11.4):

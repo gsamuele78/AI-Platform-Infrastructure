@@ -6,7 +6,7 @@ Everything that can be proven without the L40S host is proven on a developer lap
 | :-- | :-- | :-- | :-- | :-- |
 | 1. Unit + policy | bats, stubbed hardware | script logic, Compose policy | `make lint test` | nothing |
 | 2. Real OS, fake GPU | disposable Ubuntu 24.04 VM | bootstrap, deploy/rollback, backups on a mounted disk, TLS ingress, Let's Encrypt flow (against Pebble) | `make vm-test` | vagrant + vagrant-libvirt (no sudo) |
-| 3. Real GPU, small model | host Docker + one NVIDIA GPU | the production images (vLLM v0.31) serving real inference end to end through gateway and TLS ingress | `sudo make lab-gpu` | NVIDIA driver >= 580, nvidia-container-toolkit |
+| 3. Real GPU, small model | rootless Podman + one NVIDIA GPU | the production images (vLLM v0.31) serving real inference end to end through gateway and TLS ingress | `make lab-check`, `sudo make lab-setup`, `make lab-gpu` | NVIDIA driver >= 580, nvidia-container-toolkit |
 
 The lab profile `profiles/lab.env` changes only the model and its capacity (`Qwen/Qwen3.5-0.8B`, TP=1, 8k context). It is the smallest model with the production architecture (Qwen3.5 hybrid attention, `qwen3_coder` tool calls, `qwen3` reasoning), so the lab exercises the same vLLM code paths and parsers as Qwen3.8-27B. Images, gateway, UI, ingress, backups and scripts are identical to production, and so is the served alias `lifewatch-chat`.
 
@@ -18,33 +18,36 @@ The lab profile `profiles/lab.env` changes only the model and its capacity (`Qwe
 - PCIe passthrough itself (`scripts/pve/*` is covered only by the stubbed tests).
 - Let's Encrypt production issuance: it needs a public DNS name and port 80 reachable from the internet.
 
-## Level 3 setup (Debian 13 / Ubuntu laptop)
+## Level 3: setup and run
 
-The driver must be >= 580 (vLLM v0.31 images are built on CUDA 13.0). Check with `nvidia-smi`.
+The lab runs **rootless Podman as your normal user**, with its own storage under `LAB_DIR` (default `/srv/lifewatch-lab`). Your normal Podman and the Docker daemon are not touched: the Docker daemon may stay off, and only the `docker` CLI with the compose plugin is used as a client.
 
 ```bash
-# NVIDIA Container Toolkit (signed repo)
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
-  sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list |
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' |
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
+make lab-check            # read-only: 8 phases, lists every problem at once, changes nothing
+sudo make lab-setup       # once: installs or creates only what is missing (safe to repeat)
+make lab-gpu              # WITHOUT sudo: full cycle, then tears everything down
+make lab-gpu KEEP=1       # leave it running to try the UI
 ```
+
+| Phase | Checked | `lab-setup` fixes it? |
+| :-- | :-- | :-- |
+| 1 System | `docker` CLI + compose plugin, `jq`, `curl`, `openssl`, `ss` | no (lists the `apt-get install` to run) |
+| 2 GPU and driver | driver ≥ 580 (vLLM v0.31 images use CUDA 13), VRAM ≥ 4000 MiB | no: the driver is never touched |
+| 3 Rootless Podman | `podman` installed, subordinate UID/GID ranges for your user | no (prints the `usermod` command) |
+| 4 NVIDIA Container Toolkit | `nvidia-ctk` present | **yes**: `apt-get install nvidia-container-toolkit`, adding NVIDIA's signed repository only if no apt source offers it |
+| 5 CDI spec | `/etc/cdi/nvidia.yaml` exists **and** matches the loaded driver (it goes stale after every driver update) | **yes**: `nvidia-ctk cdi generate` |
+| 6 Lab directory | `LAB_DIR` exists and belongs to you | **yes**: created (or the directory itself handed to you), mode 700 |
+| 7 Disk space | first run ~30 GB free on `LAB_DIR`'s filesystem (estimate: 11.4 GB of compressed images, about twice that unpacked, plus the 1.75 GB model and pull scratch space); later runs ~3 GB | no: nothing is ever deleted. It lists the roomiest filesystems, leaving out cloud-sync, backup and boot mounts |
+| 8 Ports | 8081, 8444, 8445 (ingress), 4000, 8080 (operator ports) free | no |
+
+`make lab-gpu` runs the same check as its phase 0 and stops before starting anything if a phase fails.
+
+To put the lab on another filesystem, use the same `LAB_DIR` for all three commands, for example `LAB_DIR=/data/lab make lab-check`, then `sudo LAB_DIR=/data/lab make lab-setup`, then `LAB_DIR=/data/lab make lab-gpu`.
 
 Do **not** run `scripts/vm/bootstrap.sh` on the laptop: it targets the Ubuntu 24.04 guest and installs a datacenter driver branch.
 
-Run:
+With `KEEP=1`, open https://localhost:8444 after importing `LAB_DIR/tls/live/ca.pem` into the browser (or accept the warning). The first account you register becomes admin; sign-up is enabled in the lab only (`WEBUI_ENABLE_SIGNUP=true`). API: `https://localhost:8445/v1` with a key from `scripts/ops/issue-key.sh`. Stop it with `docker compose -p lwlab down` (with `DOCKER_HOST` as printed), then `tests/lab/podman-service.sh stop`.
 
-```bash
-sudo make lab-gpu            # full cycle, then tears everything down
-sudo make lab-gpu KEEP=1     # leave it running to try the UI
-```
+The first run downloads the images (about 11.4 GB compressed, 9 GB of it vLLM) and the model (1.75 GB) into `LAB_DIR`. Both are reused later. Image layers are staged in `LAB_DIR/tmp` while pulling, not in the RAM-backed runtime directory.
 
-With `KEEP=1`, open https://localhost after importing `/srv/lifewatch-lab/tls/live/ca.pem` into the browser (or accept the warning). The first account you register becomes admin; sign-up is enabled in the lab only (`WEBUI_ENABLE_SIGNUP=true`). API: `https://localhost:8443/v1` with a key from `scripts/ops/issue-key.sh`.
-
-First run downloads the vLLM image (about 10 GB) and the model (1 GB) into `/srv/lifewatch-lab`. Both are reused later.
-
-Ports used on the laptop: 80, 443, 8443 (ingress, loopback only), 4000 and 8080 (operator ports, loopback).
+Ports used on the laptop: 8081, 8444, 8445 (ingress, loopback) and 4000, 8080 (operator ports, loopback). Rootless Podman cannot bind ports below 1024, which is why they differ from production.

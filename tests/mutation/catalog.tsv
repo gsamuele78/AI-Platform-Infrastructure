@@ -34,3 +34,5 @@ tool-smoke	scripts/deploy/smoke-test.sh	s#tool_choice: "auto"\}#tool_choice: "no
 key-limit	scripts/ops/issue-key.sh	s#\{max_parallel_requests: #{max_parallel: #	tests/vm/vm-scripts.bats	per-key rate
 verbose-gateway	configs/proxy/config.yaml	s#set_verbose: false#set_verbose: true#	tests/compose/policy.bats	response bodies out
 loose-gate	bench/gates.json	s#"quality_max_drop_pp": 2#"quality_max_drop_pp": 50#	tests/bench/bench.bats	gate fails
+lab-no-root-guard	tests/lab/run-gpu.sh	s#"\$\{ENGINE\}" == podman \&\& "\$\(id -u\)" -eq 0#"${ENGINE}" == none#	tests/lab/setup.bats	refuses to run as root
+lab-skip-prereq	tests/lab/run-gpu.sh	s#^bash "\$\{REPO\}/tests/lab/setup.sh" \|\| \{#true || {#	tests/lab/setup.bats	stops before touching
