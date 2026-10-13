@@ -74,7 +74,7 @@ services:
 
   # API gateway: auth (virtual keys), quotas, audit. The only path to vLLM.
   litellm-gateway:
-    image: ghcr.io/berriai/litellm-database:v1.104.2@sha256:5a9ff0fd7177372f2ccd8949cb121f67e281f4d13d026af51f9c096c0626f50a
+    image: ghcr.io/berriai/litellm-database:v1.105.0@sha256:f99e4cc55ce8a1c6888504ac6eff147868979d37363a7246cf804bbabdc27e88
     restart: unless-stopped
     command: ["--port", "4000", "--config", "/app/config.yaml"]
     ports:
@@ -111,7 +111,7 @@ services:
   # Web UI: human users authenticate here via Keycloak OIDC. Public access only
   # through the TLS ingress; the loopback port is for operators.
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.11.4@sha256:9591b13f13843c7721c2b8eaf7382846c81b3ffe126526d1888d1fed50c6a33f
+    image: ghcr.io/open-webui/open-webui:v0.12.0@sha256:1565038903151ced924b5a3226f73f40f16963df4b910441f6391f10144afdaa
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
@@ -178,7 +178,7 @@ services:
   # Certificates come from TLS_DIR/live (scripts/ops/tls-selfsigned.sh, then
   # scripts/ops/tls-letsencrypt.sh); nginx only reads them.
   ingress:
-    image: nginx:1.30-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+    image: nginx:1.31-alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
     restart: unless-stopped
     ports:
       - "${INGRESS_BIND:-0.0.0.0}:${INGRESS_HTTP_PORT:-80}:80"
