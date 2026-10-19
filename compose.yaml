@@ -74,7 +74,7 @@ services:
 
   # API gateway: auth (virtual keys), quotas, audit. The only path to vLLM.
   litellm-gateway:
-    image: ghcr.io/berriai/litellm-database:v1.104.2@sha256:5a9ff0fd7177372f2ccd8949cb121f67e281f4d13d026af51f9c096c0626f50a
+    image: ghcr.io/berriai/litellm-database:v1.106.0@sha256:80a12a210e6626e39daaa31fb6ce70f4c4d97ee10e21d4584a9e87f45bf3a2f1
     restart: unless-stopped
     command: ["--port", "4000", "--config", "/app/config.yaml"]
     ports:
@@ -111,7 +111,7 @@ services:
   # Web UI: human users authenticate here via Keycloak OIDC. Public access only
   # through the TLS ingress; the loopback port is for operators.
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.11.4@sha256:9591b13f13843c7721c2b8eaf7382846c81b3ffe126526d1888d1fed50c6a33f
+    image: ghcr.io/open-webui/open-webui:v0.12.3@sha256:a537bbe1e6b428820f52ed4a029d7fff97062e24d5cf32c365fba36fd0542def
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
