@@ -16,7 +16,7 @@ services:
   # Inference backend. Internal network only: no egress, no published port.
   # Weights must be pre-staged with scripts/vm/fetch-model.sh (HF_HUB_OFFLINE=1).
   vllm-backend:
-    image: vllm/vllm-openai:v0.31.0@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+    image: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
     restart: unless-stopped
     environment:
       HF_HUB_OFFLINE: "1"
